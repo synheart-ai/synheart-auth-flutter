@@ -1,0 +1,25 @@
+name: synheart_auth
+description: Flutter plugin for Synheart device authentication. Wraps native iOS (Secure Enclave) and Android (Keystore) SDKs via platform channels.
+version: 1.0.0
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.synheart.auth.flutter
+        pluginClass: SynheartAuthPlugin
+      ios:
+        pluginClass: SynheartAuthPlugin
