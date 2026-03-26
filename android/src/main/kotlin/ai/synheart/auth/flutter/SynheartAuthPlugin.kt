@@ -14,10 +14,12 @@ import kotlinx.coroutines.*
 class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
     private lateinit var channel: MethodChannel
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var applicationContext: android.content.Context? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "ai.synheart.auth")
         channel.setMethodCallHandler(this)
+        applicationContext = binding.applicationContext
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -30,7 +32,8 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
             "configure" -> {
                 val baseUrl = call.argument<String>("baseUrl")
                     ?: return result.error("INVALID_ARGS", "Missing baseUrl", null)
-                ai.synheart.auth.SynheartAuth.shared.configure(baseUrl)
+                val attestation = applicationContext?.let { PlayIntegrityAttestationProvider(it) }
+                ai.synheart.auth.SynheartAuth.shared.configure(baseUrl, attestation)
                 result.success(null)
             }
 
