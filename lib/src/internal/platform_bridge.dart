@@ -12,7 +12,7 @@ class PlatformBridge {
   final MethodChannel _channel;
 
   PlatformBridge({MethodChannel? channel})
-      : _channel = channel ?? const MethodChannel('com.synheart.auth');
+      : _channel = channel ?? const MethodChannel('ai.synheart.auth');
 
   // -- Configuration --
 

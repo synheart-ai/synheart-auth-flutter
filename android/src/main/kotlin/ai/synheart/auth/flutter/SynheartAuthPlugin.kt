@@ -1,4 +1,4 @@
-package com.synheart.auth.flutter
+package ai.synheart.auth.flutter
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -9,14 +9,14 @@ import kotlinx.coroutines.*
 
 /// Flutter plugin that bridges Dart calls to the native SynheartAuth Android SDK.
 ///
-/// In production, this imports and delegates to `com.synheart.auth.SynheartAuth`.
+/// In production, this imports and delegates to `ai.synheart.auth.SynheartAuth`.
 /// The native SDK handles all Android Keystore crypto, storage, and networking.
 class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
     private lateinit var channel: MethodChannel
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        channel = MethodChannel(binding.binaryMessenger, "com.synheart.auth")
+        channel = MethodChannel(binding.binaryMessenger, "ai.synheart.auth")
         channel.setMethodCallHandler(this)
     }
 
@@ -30,14 +30,14 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
             "configure" -> {
                 val baseUrl = call.argument<String>("baseUrl")
                     ?: return result.error("INVALID_ARGS", "Missing baseUrl", null)
-                com.synheart.auth.SynheartAuth.shared.configure(baseUrl)
+                ai.synheart.auth.SynheartAuth.shared.configure(baseUrl)
                 result.success(null)
             }
 
             "isRegistered" -> {
                 val appId = call.argument<String>("appId")
                     ?: return result.error("INVALID_ARGS", "Missing appId", null)
-                result.success(com.synheart.auth.SynheartAuth.shared.isRegistered(appId))
+                result.success(ai.synheart.auth.SynheartAuth.shared.isRegistered(appId))
             }
 
             "registerDevice" -> {
@@ -45,14 +45,14 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                     ?: return result.error("INVALID_ARGS", "Missing appId", null)
                 scope.launch {
                     try {
-                        val reg = com.synheart.auth.SynheartAuth.shared.registerDevice(appId)
+                        val reg = ai.synheart.auth.SynheartAuth.shared.registerDevice(appId)
                         result.success(
                             mapOf(
                                 "status" to reg.status.name.lowercase(),
                                 "deviceId" to reg.deviceId
                             )
                         )
-                    } catch (e: com.synheart.auth.models.SynheartAuthError) {
+                    } catch (e: ai.synheart.auth.models.SynheartAuthError) {
                         result.error(errorCode(e), e.message, null)
                     } catch (e: Exception) {
                         result.error("UNKNOWN", e.message, null)
@@ -70,7 +70,7 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                 val bodyBytes = call.argument<ByteArray>("bodyBytes")
 
                 try {
-                    val headers = com.synheart.auth.SynheartAuth.shared.signRequest(
+                    val headers = ai.synheart.auth.SynheartAuth.shared.signRequest(
                         appId, method, path, bodyBytes
                     )
                     result.success(
@@ -83,7 +83,7 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                             "signatureVersion" to headers.signatureVersion
                         )
                     )
-                } catch (e: com.synheart.auth.models.SynheartAuthError) {
+                } catch (e: ai.synheart.auth.models.SynheartAuthError) {
                     result.error(errorCode(e), e.message, null)
                 } catch (e: Exception) {
                     result.error("UNKNOWN", e.message, null)
@@ -93,7 +93,7 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
             "getDeviceId" -> {
                 val appId = call.argument<String>("appId")
                     ?: return result.error("INVALID_ARGS", "Missing appId", null)
-                result.success(com.synheart.auth.SynheartAuth.shared.getDeviceId(appId))
+                result.success(ai.synheart.auth.SynheartAuth.shared.getDeviceId(appId))
             }
 
             "rotateKey" -> {
@@ -101,9 +101,9 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                     ?: return result.error("INVALID_ARGS", "Missing appId", null)
                 scope.launch {
                     try {
-                        val rot = com.synheart.auth.SynheartAuth.shared.rotateKey(appId)
+                        val rot = ai.synheart.auth.SynheartAuth.shared.rotateKey(appId)
                         result.success(mapOf("status" to rot.status.name.lowercase()))
-                    } catch (e: com.synheart.auth.models.SynheartAuthError) {
+                    } catch (e: ai.synheart.auth.models.SynheartAuthError) {
                         result.error(errorCode(e), e.message, null)
                     } catch (e: Exception) {
                         result.error("UNKNOWN", e.message, null)
@@ -114,14 +114,14 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
             "resetDeviceIdentity" -> {
                 val appId = call.argument<String>("appId")
                     ?: return result.error("INVALID_ARGS", "Missing appId", null)
-                com.synheart.auth.SynheartAuth.shared.resetDeviceIdentity(appId)
+                ai.synheart.auth.SynheartAuth.shared.resetDeviceIdentity(appId)
                 result.success(null)
             }
 
             "correctClockSkew" -> {
                 val serverTimestamp = call.argument<Double>("serverTimestamp")
                     ?: return result.error("INVALID_ARGS", "Missing serverTimestamp", null)
-                com.synheart.auth.SynheartAuth.shared.correctClockSkew(serverTimestamp)
+                ai.synheart.auth.SynheartAuth.shared.correctClockSkew(serverTimestamp)
                 result.success(null)
             }
 
@@ -129,18 +129,18 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
         }
     }
 
-    private fun errorCode(e: com.synheart.auth.models.SynheartAuthError): String = when (e) {
-        is com.synheart.auth.models.SynheartAuthError.NetworkError -> "NETWORK_ERROR"
-        is com.synheart.auth.models.SynheartAuthError.ChallengeExpired -> "CHALLENGE_EXPIRED"
-        is com.synheart.auth.models.SynheartAuthError.KeyInvalidated -> "KEY_INVALIDATED"
-        is com.synheart.auth.models.SynheartAuthError.ClockSkew -> "CLOCK_SKEW"
-        is com.synheart.auth.models.SynheartAuthError.AlreadyRegistered -> "ALREADY_REGISTERED"
-        is com.synheart.auth.models.SynheartAuthError.NotRegistered -> "NOT_REGISTERED"
-        is com.synheart.auth.models.SynheartAuthError.NotConfigured -> "NOT_CONFIGURED"
-        is com.synheart.auth.models.SynheartAuthError.RegistrationInProgress -> "REGISTRATION_IN_PROGRESS"
-        is com.synheart.auth.models.SynheartAuthError.ServerError -> e.code
-        is com.synheart.auth.models.SynheartAuthError.CryptoError -> "CRYPTO_ERROR"
-        is com.synheart.auth.models.SynheartAuthError.StorageError -> "STORAGE_ERROR"
-        is com.synheart.auth.models.SynheartAuthError.InvalidStateTransition -> "INVALID_STATE_TRANSITION"
+    private fun errorCode(e: ai.synheart.auth.models.SynheartAuthError): String = when (e) {
+        is ai.synheart.auth.models.SynheartAuthError.NetworkError -> "NETWORK_ERROR"
+        is ai.synheart.auth.models.SynheartAuthError.ChallengeExpired -> "CHALLENGE_EXPIRED"
+        is ai.synheart.auth.models.SynheartAuthError.KeyInvalidated -> "KEY_INVALIDATED"
+        is ai.synheart.auth.models.SynheartAuthError.ClockSkew -> "CLOCK_SKEW"
+        is ai.synheart.auth.models.SynheartAuthError.AlreadyRegistered -> "ALREADY_REGISTERED"
+        is ai.synheart.auth.models.SynheartAuthError.NotRegistered -> "NOT_REGISTERED"
+        is ai.synheart.auth.models.SynheartAuthError.NotConfigured -> "NOT_CONFIGURED"
+        is ai.synheart.auth.models.SynheartAuthError.RegistrationInProgress -> "REGISTRATION_IN_PROGRESS"
+        is ai.synheart.auth.models.SynheartAuthError.ServerError -> e.code
+        is ai.synheart.auth.models.SynheartAuthError.CryptoError -> "CRYPTO_ERROR"
+        is ai.synheart.auth.models.SynheartAuthError.StorageError -> "STORAGE_ERROR"
+        is ai.synheart.auth.models.SynheartAuthError.InvalidStateTransition -> "INVALID_STATE_TRANSITION"
     }
 }

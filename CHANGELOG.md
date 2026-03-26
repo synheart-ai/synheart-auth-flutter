@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **SynheartAuth** facade — thin Dart wrapper over native platform SDKs via MethodChannel
-- **Platform bridge** — `com.synheart.auth` channel for iOS (Secure Enclave) and Android (Keystore)
+- **Platform bridge** — `ai.synheart.auth` channel for iOS (Secure Enclave) and Android (Keystore)
 - **Device registration** — `registerDevice()`, `isRegistered()`, `getDeviceId()`
 - **Request signing** — `signRequest()` returns all 6 RFC-required auth headers
 - **Key rotation** — `rotateKey()` with old-key-signs-new proof

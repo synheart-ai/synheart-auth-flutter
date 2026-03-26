@@ -7,7 +7,9 @@ Pod::Spec.new do |s|
   s.license          = { :type => 'Proprietary' }
   s.author           = 'Synheart'
   s.source           = { :path => '.' }
-  s.source_files     = 'Classes/**/*'
+  # Keep this plugin self-contained by compiling all Swift sources under Classes.
+  s.source_files     = 'Classes/**/*.{h,m,swift}'
+  s.frameworks       = 'Security', 'DeviceCheck'
   s.dependency 'Flutter'
   s.platform         = :ios, '15.0'
   s.swift_version    = '5.9'
