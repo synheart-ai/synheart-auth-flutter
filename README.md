@@ -45,7 +45,7 @@ print('Device ID: ${result.deviceId}');
 final headers = await SynheartAuth.instance.signRequest(
   appId: 'com.myapp',
   method: 'POST',
-  path: '/v1/ingest/hsi',
+  path: '/ingest/v1/hsi',
   bodyBytes: utf8.encode(jsonBody),
 );
 // headers contains all 6 auth headers — add to your HTTP request
