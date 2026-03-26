@@ -13,7 +13,7 @@ void main() {
   late List<MethodCall> log;
 
   setUp(() {
-    channel = const MethodChannel('com.synheart.auth');
+    channel = const MethodChannel('ai.synheart.auth');
     bridge = PlatformBridge(channel: channel);
     log = [];
   });

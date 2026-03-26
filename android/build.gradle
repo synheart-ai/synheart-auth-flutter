@@ -1,4 +1,4 @@
-group 'com.synheart.auth.flutter'
+group 'ai.synheart.auth.flutter'
 version '1.0.0'
 
 buildscript {
@@ -23,7 +23,7 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    namespace 'com.synheart.auth.flutter'
+    namespace 'ai.synheart.auth.flutter'
     compileSdk 34
 
     defaultConfig {
@@ -41,11 +41,14 @@ android {
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
+        // Include the native Kotlin SDK sources directly
+        main.java.srcDirs += new File(projectDir, '../../synheart-auth-kotlin/lib/src/main/kotlin')
     }
 }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:2.1.10"
-    // In production, reference synheart-auth-kotlin as a local module or published artifact:
-    // implementation project(':synheart-auth-kotlin')
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+    implementation "org.json:json:20231013"
 }

@@ -19,7 +19,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.synheart.auth.flutter
+        package: ai.synheart.auth.flutter
         pluginClass: SynheartAuthPlugin
       ios:
         pluginClass: SynheartAuthPlugin

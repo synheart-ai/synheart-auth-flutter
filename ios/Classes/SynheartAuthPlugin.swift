@@ -9,7 +9,7 @@ public class SynheartAuthPlugin: NSObject, FlutterPlugin {
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
-            name: "com.synheart.auth",
+            name: "ai.synheart.auth",
             binaryMessenger: registrar.messenger()
         )
         let instance = SynheartAuthPlugin()
