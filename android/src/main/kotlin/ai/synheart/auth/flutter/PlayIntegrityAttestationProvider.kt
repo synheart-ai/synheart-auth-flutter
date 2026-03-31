@@ -31,12 +31,12 @@ class PlayIntegrityAttestationProvider(
                         continuation.resume(token)
                     }
                     .addOnFailureListener { e ->
-                        Log.e(tag, "Play Integrity failed: ${e.message}", e)
+                        Log.e(tag, "Play Integrity failed: ${e.javaClass.simpleName}: ${e.message}", e)
                         continuation.resume(null)
                     }
             }
         } catch (e: Exception) {
-            Log.e(tag, "Play Integrity unavailable: ${e.message}", e)
+            Log.e(tag, "Play Integrity unavailable: ${e.javaClass.simpleName}: ${e.message}", e)
             null
         }
     }

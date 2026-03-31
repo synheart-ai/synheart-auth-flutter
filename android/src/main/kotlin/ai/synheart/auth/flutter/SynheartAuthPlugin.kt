@@ -6,6 +6,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import kotlinx.coroutines.*
+import android.content.pm.ApplicationInfo
 
 /// Flutter plugin that bridges Dart calls to the native SynheartAuth Android SDK.
 ///
@@ -33,6 +34,9 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                 val baseUrl = call.argument<String>("baseUrl")
                     ?: return result.error("INVALID_ARGS", "Missing baseUrl", null)
                 val attestation = applicationContext?.let { PlayIntegrityAttestationProvider(it) }
+                val debuggable =
+                    applicationContext?.applicationInfo?.flags?.and(ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                ai.synheart.auth.SynheartAuth.shared.setLoggingEnabled(debuggable)
                 ai.synheart.auth.SynheartAuth.shared.configure(baseUrl, attestation)
                 result.success(null)
             }
