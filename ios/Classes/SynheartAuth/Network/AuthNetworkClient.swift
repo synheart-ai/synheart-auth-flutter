@@ -54,6 +54,7 @@ final class AuthNetworkClient: AuthNetworking, @unchecked Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
+        logger.debug("HTTP POST \(url.absoluteString) bodyBytes=\(request.httpBody?.count ?? 0) (body redacted)")
 
         let (data, response) = try await performRequest(request)
 
@@ -61,10 +62,15 @@ final class AuthNetworkClient: AuthNetworking, @unchecked Sendable {
             throw SynheartAuthError.networkError("Invalid response type")
         }
 
+        logger.debug("HTTP \(httpResponse.statusCode) \(url.absoluteString) respBytes=\(data.count)")
         if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
             return data
         }
 
+        if let text = String(data: data, encoding: .utf8) {
+            let preview = String(text.prefix(200))
+            logger.warning("HTTP error \(httpResponse.statusCode) preview=\(preview)")
+        }
         if let errorResponse = try? decoder.decode(AuthErrorResponse.self, from: data) {
             if errorResponse.code == "CLOCK_SKEW", errorResponse.serverTimestamp != nil {
                 throw SynheartAuthError.clockSkew

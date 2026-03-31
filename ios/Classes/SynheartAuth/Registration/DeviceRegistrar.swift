@@ -50,6 +50,7 @@ final class DeviceRegistrar: @unchecked Sendable {
             logger.info("Step 1/6: Fetching challenge for \(appId)")
             let challengeResponse = try await network.fetchChallenge(appId: appId)
             try storage.saveState(.challengeReceived, appId: appId)
+            logger.info("Challenge received: \(challengeResponse.challenge) expiresAt=\(challengeResponse.expiresAt)")
 
             // Step 2: Generate key pair
             logger.info("Step 2/6: Generating key pair")
@@ -58,6 +59,7 @@ final class DeviceRegistrar: @unchecked Sendable {
 
             // Step 3: App Attest proof (best-effort)
             let publicKeyBase64 = publicKeyData.base64EncodedString()
+            logger.info("Public key generated: bytes=\(publicKeyData.count) base64=\(publicKeyBase64)")
             let proof = await fetchAttestation(
                 challenge: challengeResponse.challenge,
                 publicKey: publicKeyBase64,
@@ -182,6 +184,8 @@ final class DeviceRegistrar: @unchecked Sendable {
             // Nonce = SHA256(challenge + public_key) per attestation flow spec
             let nonceInput = challenge + publicKey
             let nonce = Data(SHA256.hash(data: Data(nonceInput.utf8)))
+            let prefixHex = nonce.prefix(8).map { String(format: "%02x", $0) }.joined()
+            logger.info("Computed App Attest nonce: bytes=\(nonce.count) prefix_hex=\(prefixHex)")
             let attestation = try await DCAppAttestService.shared.attestKey(keyId, clientDataHash: nonce)
             return attestation.base64EncodedString()
         } catch {
