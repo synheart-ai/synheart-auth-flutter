@@ -46,3 +46,9 @@ app.*.map.json
 
 # Claude Code
 .claude/
+
+# Android Native Build Caches
+android/.gradle/
+android/.cxx/
+android/.settings/
+android/build/

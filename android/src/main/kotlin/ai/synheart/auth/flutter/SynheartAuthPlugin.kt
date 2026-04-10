@@ -22,6 +22,16 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
         channel = MethodChannel(binding.binaryMessenger, "ai.synheart.auth")
         channel.setMethodCallHandler(this)
         applicationContext = binding.applicationContext
+
+        // Initialize the native crypto bridge with app context (for Play Integrity).
+        NativeCryptoBridge.init(binding.applicationContext)
+
+        // Load the native JNI library that exports C symbols for Rust Core.
+        try {
+            System.loadLibrary("synheart_native_crypto")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e("SynheartAuthPlugin", "Failed to load libsynheart_native_crypto.so", e)
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
