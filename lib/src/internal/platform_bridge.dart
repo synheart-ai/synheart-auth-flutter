@@ -55,9 +55,12 @@ class PlatformBridge {
   }
 
   Future<Map<String, dynamic>> registerDevice(String appId) async {
-    final result =
-        await _invoke<Map>('registerDevice', {'appId': appId});
-    return Map<String, dynamic>.from(result ?? {});
+    // Runtime-only networking policy:
+    // Device registration must be performed by synheart-core-runtime, not SDK APIs.
+    throw UnsupportedError(
+      'registerDevice is disabled in synheart_auth. '
+      'Use synheart_core_runtime device registration flow.',
+    );
   }
 
   // -- Signing --
@@ -86,8 +89,12 @@ class PlatformBridge {
   // -- Key Rotation --
 
   Future<Map<String, dynamic>> rotateKey(String appId) async {
-    final result = await _invoke<Map>('rotateKey', {'appId': appId});
-    return Map<String, dynamic>.from(result ?? {});
+    // Runtime-only networking policy:
+    // Key rotation is an outbound auth operation and must run via core-runtime.
+    throw UnsupportedError(
+      'rotateKey is disabled in synheart_auth. '
+      'Use synheart_core_runtime key management/rotation flow.',
+    );
   }
 
   // -- Reset --

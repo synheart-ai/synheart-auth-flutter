@@ -7,6 +7,7 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import kotlinx.coroutines.*
 import android.content.pm.ApplicationInfo
+import android.util.Log
 
 /// Flutter plugin that bridges Dart calls to the native SynheartAuth Android SDK.
 ///
@@ -21,6 +22,16 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
         channel = MethodChannel(binding.binaryMessenger, "ai.synheart.auth")
         channel.setMethodCallHandler(this)
         applicationContext = binding.applicationContext
+
+        // Initialize the native crypto bridge with app context (for Play Integrity).
+        NativeCryptoBridge.init(binding.applicationContext)
+
+        // Load the native JNI library that exports C symbols for Rust Core.
+        try {
+            System.loadLibrary("synheart_native_crypto")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e("SynheartAuthPlugin", "Failed to load libsynheart_native_crypto.so", e)
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -36,7 +47,7 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                 val attestation = applicationContext?.let { PlayIntegrityAttestationProvider(it) }
                 val debuggable =
                     applicationContext?.applicationInfo?.flags?.and(ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                ai.synheart.auth.SynheartAuth.shared.setLoggingEnabled(debuggable)
+                setLoggingEnabledIfSupported(debuggable)
                 ai.synheart.auth.SynheartAuth.shared.configure(baseUrl, attestation)
                 result.success(null)
             }
@@ -60,8 +71,10 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                             )
                         )
                     } catch (e: ai.synheart.auth.models.SynheartAuthError) {
+                        Log.e("SynheartAuthPlugin", "registerDevice failed: ${e.message}")
                         result.error(errorCode(e), e.message, null)
                     } catch (e: Exception) {
+                        Log.e("SynheartAuthPlugin", "registerDevice unexpected error", e)
                         result.error("UNKNOWN", e.message, null)
                     }
                 }
@@ -133,6 +146,21 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
             }
 
             else -> result.notImplemented()
+        }
+    }
+
+    private fun setLoggingEnabledIfSupported(enabled: Boolean) {
+        try {
+            val auth = ai.synheart.auth.SynheartAuth.shared
+            val method = auth::class.java.getMethod(
+                "setLoggingEnabled",
+                Boolean::class.javaPrimitiveType
+            )
+            method.invoke(auth, enabled)
+        } catch (_: NoSuchMethodException) {
+            // Compatible with newer SDK versions where logging API was removed.
+        } catch (_: Throwable) {
+            // Logging should never block SDK configuration.
         }
     }
 

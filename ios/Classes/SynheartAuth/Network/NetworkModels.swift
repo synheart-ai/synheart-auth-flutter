@@ -29,16 +29,31 @@ struct ChallengeRequest: Codable {
     }
 }
 
-/// Internal model matching the API's data payload
+/// Internal model matching the API's data payload.
+///
+/// Supports current auth service fields (`challenge_id`, `challenge_nonce`, `expires_at`)
+/// and legacy single `challenge` string (see SDK_DART_AUTH_SEQUENCE.md).
 struct ChallengeDataPayload: Decodable {
-    let challenge: String
+    let challenge: String?
+    let challengeId: String?
+    let challengeNonce: String?
     let expiresIn: Int?
     let expiresAt: String?
 
     enum CodingKeys: String, CodingKey {
         case challenge
+        case challengeId = "challenge_id"
+        case challengeNonce = "challenge_nonce"
         case expiresIn = "expires_in"
         case expiresAt = "expires_at"
+    }
+
+    /// Value used for registration / attestation nonce input (legacy `challenge` or nonce/id).
+    var resolvedChallengeMaterial: String {
+        if let c = challenge, !c.isEmpty { return c }
+        if let n = challengeNonce, !n.isEmpty { return n }
+        if let id = challengeId, !id.isEmpty { return id }
+        return ""
     }
 }
 
@@ -57,6 +72,15 @@ struct ChallengeResponse: Codable {
         // Try envelope format first
         if let envelope = try? decoder.decode(ApiEnvelope<ChallengeDataPayload>.self, from: data),
            let payload = envelope.data {
+            let material = payload.resolvedChallengeMaterial
+            guard !material.isEmpty else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [],
+                        debugDescription: "No challenge, challenge_nonce, or challenge_id in challenge response"
+                    )
+                )
+            }
             let expiresAt: String
             if let ea = payload.expiresAt {
                 expiresAt = ea
@@ -65,9 +89,24 @@ struct ChallengeResponse: Codable {
             } else {
                 expiresAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(300))
             }
-            return ChallengeResponse(challenge: payload.challenge, expiresAt: expiresAt)
+            return ChallengeResponse(challenge: material, expiresAt: expiresAt)
         }
-        // Fallback: flat format
+        // Flat JSON without envelope: new fields or legacy `challenge`
+        if let flat = try? decoder.decode(ChallengeDataPayload.self, from: data) {
+            let material = flat.resolvedChallengeMaterial
+            if !material.isEmpty {
+                let expiresAt: String
+                if let ea = flat.expiresAt {
+                    expiresAt = ea
+                } else if let ei = flat.expiresIn {
+                    expiresAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(TimeInterval(ei)))
+                } else {
+                    expiresAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(300))
+                }
+                return ChallengeResponse(challenge: material, expiresAt: expiresAt)
+            }
+        }
+        // Legacy flat: { "challenge", "expires_at" }
         return try decoder.decode(ChallengeResponse.self, from: data)
     }
 }
@@ -76,19 +115,31 @@ struct ChallengeResponse: Codable {
 
 struct RegisterRequest: Codable {
     let appId: String
-    let deviceId: String
     let challenge: String
     let publicKey: String
-    let platform: String
-    let proof: String
+    let attestation: String?
+    let deviceMetadata: DeviceMetadata?
 
     enum CodingKeys: String, CodingKey {
         case appId = "app_id"
-        case deviceId = "device_id"
         case challenge
         case publicKey = "public_key"
+        case attestation
+        case deviceMetadata = "device_metadata"
+    }
+}
+
+struct DeviceMetadata: Codable {
+    let platform: String
+    let osVersion: String?
+    let model: String?
+    let secureEnclave: Bool?
+
+    enum CodingKeys: String, CodingKey {
         case platform
-        case proof
+        case osVersion = "os_version"
+        case model
+        case secureEnclave = "secure_enclave"
     }
 }
 

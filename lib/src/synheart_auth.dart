@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 
 import 'internal/platform_bridge.dart';
-import 'models/auth_error.dart';
 import 'models/auth_models.dart';
 
 /// Public facade for the Synheart device authentication SDK.
@@ -48,9 +47,9 @@ class SynheartAuth {
   /// Check if a device is already registered for the given app.
   Future<bool> isRegistered(String appId) => _bridge.isRegistered(appId);
 
-  /// Register this device with the Synheart auth service.
-  ///
-  /// Idempotent — if already registered, returns [RegistrationStatus.alreadyRegistered].
+  /// Runtime-only networking policy:
+  /// registration is disabled in this SDK facade and must be performed by
+  /// synheart-core-runtime.
   Future<RegistrationResult> registerDevice(String appId) async {
     final result = await _bridge.registerDevice(appId);
     final statusStr = result['status'] as String? ?? 'failed';
@@ -88,7 +87,9 @@ class SynheartAuth {
   /// Get the device ID for the given app, or null if not registered.
   Future<String?> getDeviceId(String appId) => _bridge.getDeviceId(appId);
 
-  /// Rotate the device key. The old key signs the new public key as proof of possession.
+  /// Runtime-only networking policy:
+  /// key rotation is disabled in this SDK facade and must be performed by
+  /// synheart-core-runtime.
   Future<RotationResult> rotateKey(String appId) async {
     final result = await _bridge.rotateKey(appId);
     final statusStr = result['status'] as String? ?? 'failed';

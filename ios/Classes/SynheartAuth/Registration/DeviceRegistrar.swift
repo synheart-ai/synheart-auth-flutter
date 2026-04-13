@@ -66,20 +66,21 @@ final class DeviceRegistrar: @unchecked Sendable {
                 appId: appId
             )
 
-            // Generate or reuse device ID
-            let deviceId = storage.loadDeviceId(appId: appId) ?? UUID().uuidString
-
             // Step 4: Register with server
             logger.info("Step 4/6: Registering with server")
             try storage.saveState(.registering, appId: appId)
 
             let request = RegisterRequest(
                 appId: appId,
-                deviceId: deviceId,
                 challenge: challengeResponse.challenge,
                 publicKey: publicKeyBase64,
-                platform: "ios",
-                proof: proof ?? "none"
+                attestation: proof,
+                deviceMetadata: DeviceMetadata(
+                    platform: "iOS",
+                    osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                    model: currentDeviceModel(),
+                    secureEnclave: true
+                )
             )
 
             let response = try await network.registerDevice(request: request)
@@ -195,6 +196,14 @@ final class DeviceRegistrar: @unchecked Sendable {
         #else
         logger.info("App Attest not available (simulator/macOS)")
         return nil
+        #endif
+    }
+
+    private func currentDeviceModel() -> String {
+        #if canImport(UIKit)
+        return UIDevice.current.model
+        #else
+        return "unknown"
         #endif
     }
 }
