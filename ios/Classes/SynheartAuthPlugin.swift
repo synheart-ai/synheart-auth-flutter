@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import SynheartAuth
 
 /// Flutter plugin that bridges Dart calls to the native SynheartAuth iOS SDK.
 ///
@@ -8,6 +9,10 @@ import UIKit
 public class SynheartAuthPlugin: NSObject, FlutterPlugin {
 
     public static func register(with registrar: FlutterPluginRegistrar) {
+        // Keep synheart_native_* @_cdecl symbols alive so the static linker
+        // does not strip them before DynamicLibrary.process() can resolve them.
+        _ = SynheartNativeCryptoAnchor.all
+
         let channel = FlutterMethodChannel(
             name: "ai.synheart.auth",
             binaryMessenger: registrar.messenger()

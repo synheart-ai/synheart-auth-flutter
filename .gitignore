@@ -41,6 +41,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Android NDK/CMake (per-ABI configure outputs)
+android/.cxx/
+
 # Native shared libraries
 *.so
 
