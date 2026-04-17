@@ -139,7 +139,7 @@ char *synheart_native_generate_key(const char *device_id) {
     return out;
 }
 
-// Sign raw bytes. Returns base64url-encoded R||S signature or NULL.
+// Sign callback payload bytes and return base64url raw R||S (exactly 64 bytes), or NULL.
 __attribute__((visibility("default")))
 char *synheart_native_sign_bytes(const char *device_id,
                                   const unsigned char *data,

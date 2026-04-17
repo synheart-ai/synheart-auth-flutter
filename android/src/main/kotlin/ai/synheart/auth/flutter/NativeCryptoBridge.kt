@@ -120,11 +120,11 @@ object NativeCryptoBridge {
 
     // ── 2. signBytes ────────────────────────────────────────────────────
 
-    /// Sign raw bytes with the device key. The C++ caller has already
-    /// computed the hash if needed — we sign the raw input as-is using
-    /// SHA256withECDSA (Android Keystore performs the SHA-256 internally).
+    /// Sign callback input bytes with the device key.
     ///
-    /// Returns base64url-encoded raw R||S (64 bytes) signature, or null.
+    /// Rust decides which byte sequence to sign (pre-hash or canonical message).
+    /// Android Keystore applies SHA-256 internally via SHA256withECDSA.
+    /// The callback contract requires base64url of raw 64-byte R||S (not DER).
     @JvmStatic
     fun signBytes(deviceId: String, data: ByteArray): String? {
         return try {
