@@ -8,6 +8,9 @@
 //   synheart_native_get_attestation
 //   synheart_native_key_exists
 //   synheart_native_delete_key
+//   synheart_native_secure_store
+//   synheart_native_secure_load
+//   synheart_native_secure_delete
 //
 // Each function uses JNI to call NativeCryptoBridge (Kotlin) which delegates
 // to Android Keystore / Play Integrity. Returned C strings are allocated with
@@ -256,6 +259,101 @@ int synheart_native_delete_key(const char *device_id) {
 
     detach(s);
     return result ? 0 : 1;
+}
+
+// Store secure value for (service, key). Returns 0 on success, non-zero on failure.
+__attribute__((visibility("default")))
+int synheart_native_secure_store(const char *service, const char *key, const char *value) {
+    if (!service || !key || !value) return 1;
+
+    JniScope s = attach();
+    if (!s.env) return 1;
+
+    jclass cls = findBridgeClass(s.env);
+    if (!cls) { detach(s); return 1; }
+
+    jmethodID mid = s.env->GetStaticMethodID(cls, "secureStore",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I");
+    if (!mid) { s.env->ExceptionClear(); detach(s); return 1; }
+
+    jstring jService = s.env->NewStringUTF(service);
+    jstring jKey = s.env->NewStringUTF(key);
+    jstring jValue = s.env->NewStringUTF(value);
+    jint result = s.env->CallStaticIntMethod(cls, mid, jService, jKey, jValue);
+
+    if (s.env->ExceptionCheck()) {
+        LOGE("synheart_native_secure_store: JNI exception");
+        s.env->ExceptionDescribe();
+        s.env->ExceptionClear();
+        detach(s);
+        return 1;
+    }
+
+    detach(s);
+    return static_cast<int>(result);
+}
+
+// Load secure value for (service, key). Returns strdup'd value, or NULL when missing/error.
+__attribute__((visibility("default")))
+char *synheart_native_secure_load(const char *service, const char *key) {
+    if (!service || !key) return nullptr;
+
+    JniScope s = attach();
+    if (!s.env) return nullptr;
+
+    jclass cls = findBridgeClass(s.env);
+    if (!cls) { detach(s); return nullptr; }
+
+    jmethodID mid = s.env->GetStaticMethodID(cls, "secureLoad",
+        "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+    if (!mid) { s.env->ExceptionClear(); detach(s); return nullptr; }
+
+    jstring jService = s.env->NewStringUTF(service);
+    jstring jKey = s.env->NewStringUTF(key);
+    jstring result = (jstring) s.env->CallStaticObjectMethod(cls, mid, jService, jKey);
+
+    if (s.env->ExceptionCheck()) {
+        LOGE("synheart_native_secure_load: JNI exception");
+        s.env->ExceptionDescribe();
+        s.env->ExceptionClear();
+        detach(s);
+        return nullptr;
+    }
+
+    char *out = jstringToStrdup(s.env, result);
+    detach(s);
+    return out;
+}
+
+// Delete secure value for (service, key). Returns 0 on success, non-zero on failure.
+__attribute__((visibility("default")))
+int synheart_native_secure_delete(const char *service, const char *key) {
+    if (!service || !key) return 1;
+
+    JniScope s = attach();
+    if (!s.env) return 1;
+
+    jclass cls = findBridgeClass(s.env);
+    if (!cls) { detach(s); return 1; }
+
+    jmethodID mid = s.env->GetStaticMethodID(cls, "secureDelete",
+        "(Ljava/lang/String;Ljava/lang/String;)I");
+    if (!mid) { s.env->ExceptionClear(); detach(s); return 1; }
+
+    jstring jService = s.env->NewStringUTF(service);
+    jstring jKey = s.env->NewStringUTF(key);
+    jint result = s.env->CallStaticIntMethod(cls, mid, jService, jKey);
+
+    if (s.env->ExceptionCheck()) {
+        LOGE("synheart_native_secure_delete: JNI exception");
+        s.env->ExceptionDescribe();
+        s.env->ExceptionClear();
+        detach(s);
+        return 1;
+    }
+
+    detach(s);
+    return static_cast<int>(result);
 }
 
 } // extern "C"

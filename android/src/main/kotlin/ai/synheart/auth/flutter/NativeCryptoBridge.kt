@@ -1,10 +1,13 @@
 package ai.synheart.auth.flutter
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
 import java.security.KeyFactory
@@ -27,6 +30,7 @@ object NativeCryptoBridge {
     private const val TAG = "NativeCryptoBridge"
     private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
     private const val KEY_ALIAS_PREFIX = "synheart_device_"
+    private const val SECURE_PREFS_FILE = "synheart_core_secure_storage"
 
 
     /// Application context captured during plugin initialization. Required for
@@ -39,6 +43,27 @@ object NativeCryptoBridge {
     fun init(context: Context) {
         appContext = context.applicationContext
         Log.i(TAG, "Context initialized")
+    }
+
+    private fun storageKey(service: String, key: String): String = "$service::$key"
+
+    private fun securePrefs(): SharedPreferences? {
+        val ctx = appContext ?: return null
+        return try {
+            val masterKey = MasterKey.Builder(ctx)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                ctx,
+                SECURE_PREFS_FILE,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "securePrefs init failed: ${e.message}", e)
+            null
+        }
     }
 
     // ── Key alias helper ────────────────────────────────────────────────
@@ -109,14 +134,19 @@ object NativeCryptoBridge {
             val entry = ks.getEntry(keyAlias, null) as? KeyStore.PrivateKeyEntry
                 ?: throw IllegalStateException("Key not found: $keyAlias")
 
-            val sig = Signature.getInstance("NONEwithECDSA")
+            val sig = Signature.getInstance("SHA256withECDSA")
             sig.initSign(entry.privateKey)
             sig.update(data)
             val derSignature = sig.sign()
-
-            // Return DER encoded signature directly as expected by backend
-            val b64 = base64urlEncode(derSignature)
-            Log.i(TAG, "signBytes($deviceId): ${b64.length} chars (dataLen=${data.size})")
+            val rawSignature = derEcdsaToRawRS(derSignature)
+                ?: throw IllegalStateException(
+                    "DER->R||S conversion failed (derLen=${derSignature.size})",
+                )
+            val b64 = base64urlEncode(rawSignature)
+            Log.i(
+                TAG,
+                "signBytes($deviceId): ${b64.length} chars (rawLen=${rawSignature.size}, dataLen=${data.size})",
+            )
             b64
         } catch (e: Exception) {
             Log.e(TAG, "signBytes($deviceId) failed: ${e.message}", e)
@@ -226,6 +256,50 @@ object NativeCryptoBridge {
         }
     }
 
+    // ── 6. secureStore (SMK storage callback) ──────────────────────────
+
+    /// Store secure value for `(service, key)`. Returns 0 on success.
+    @JvmStatic
+    fun secureStore(service: String, key: String, value: String): Int {
+        val prefs = securePrefs() ?: return 1
+        return try {
+            val ok = prefs.edit().putString(storageKey(service, key), value).commit()
+            if (ok) 0 else 1
+        } catch (e: Exception) {
+            Log.e(TAG, "secureStore($service, $key) failed: ${e.message}", e)
+            1
+        }
+    }
+
+    // ── 7. secureLoad (SMK storage callback) ───────────────────────────
+
+    /// Load secure value for `(service, key)`. Returns null if missing/error.
+    @JvmStatic
+    fun secureLoad(service: String, key: String): String? {
+        val prefs = securePrefs() ?: return null
+        return try {
+            prefs.getString(storageKey(service, key), null)
+        } catch (e: Exception) {
+            Log.e(TAG, "secureLoad($service, $key) failed: ${e.message}", e)
+            null
+        }
+    }
+
+    // ── 8. secureDelete (SMK storage callback) ─────────────────────────
+
+    /// Delete secure value for `(service, key)`. Returns 0 on success.
+    @JvmStatic
+    fun secureDelete(service: String, key: String): Int {
+        val prefs = securePrefs() ?: return 1
+        return try {
+            val ok = prefs.edit().remove(storageKey(service, key)).commit()
+            if (ok) 0 else 1
+        } catch (e: Exception) {
+            Log.e(TAG, "secureDelete($service, $key) failed: ${e.message}", e)
+            1
+        }
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     /// Convert BigInteger byte array to exactly 32 bytes (left-padded, leading
@@ -245,4 +319,63 @@ object NativeCryptoBridge {
             stripped.copyOfRange(stripped.size - 32, stripped.size)
         }
     }
+
+    /// Convert ASN.1 DER ECDSA signature to raw 64-byte R||S for P-256.
+    private fun derEcdsaToRawRS(der: ByteArray): ByteArray? {
+        var offset = 0
+        if (der.isEmpty() || der[offset] != 0x30.toByte()) return null
+        offset += 1
+
+        val seqLenParsed = readDerLength(der, offset) ?: return null
+        val seqLen = seqLenParsed.first
+        offset = seqLenParsed.second
+        if (offset + seqLen != der.size) return null
+
+        val rParsed = readDerInteger(der, offset) ?: return null
+        val r = normalizeScalar32(rParsed.first) ?: return null
+        offset = rParsed.second
+
+        val sParsed = readDerInteger(der, offset) ?: return null
+        val s = normalizeScalar32(sParsed.first) ?: return null
+        offset = sParsed.second
+        if (offset != der.size) return null
+
+        return r + s
+    }
+
+    private fun readDerInteger(input: ByteArray, start: Int): Pair<ByteArray, Int>? {
+        var offset = start
+        if (offset >= input.size || input[offset] != 0x02.toByte()) return null
+        offset += 1
+        val parsed = readDerLength(input, offset) ?: return null
+        val len = parsed.first
+        offset = parsed.second
+        if (len < 0 || offset + len > input.size) return null
+        val value = input.copyOfRange(offset, offset + len)
+        return Pair(value, offset + len)
+    }
+
+    private fun readDerLength(input: ByteArray, start: Int): Pair<Int, Int>? {
+        if (start >= input.size) return null
+        val first = input[start].toInt() and 0xFF
+        if (first and 0x80 == 0) {
+            return Pair(first, start + 1)
+        }
+        val count = first and 0x7F
+        if (count == 0 || count > 4 || start + 1 + count > input.size) return null
+        var len = 0
+        for (i in 0 until count) {
+            len = (len shl 8) or (input[start + 1 + i].toInt() and 0xFF)
+        }
+        return Pair(len, start + 1 + count)
+    }
+
+    private fun normalizeScalar32(value: ByteArray): ByteArray? {
+        var idx = 0
+        while (idx < value.size && value[idx] == 0.toByte()) idx++
+        val trimmed = value.copyOfRange(idx, value.size)
+        if (trimmed.size > 32) return null
+        return ByteArray(32 - trimmed.size) + trimmed
+    }
+
 }

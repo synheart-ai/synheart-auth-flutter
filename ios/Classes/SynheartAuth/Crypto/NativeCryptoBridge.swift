@@ -129,6 +129,49 @@ public func synheartNativeDeleteKey(_ deviceId: UnsafePointer<CChar>?) -> Int32 
     return 0
 }
 
+/// Store secure value for `(service, key)`. Returns 0 on success, non-zero on failure.
+@_cdecl("synheart_native_secure_store")
+public func synheartNativeSecureStore(
+    _ service: UnsafePointer<CChar>?,
+    _ key: UnsafePointer<CChar>?,
+    _ value: UnsafePointer<CChar>?
+) -> Int32 {
+    guard let service, let key, let value else { return 1 }
+    let serviceStr = String(cString: service)
+    let keyStr = String(cString: key)
+    let valueStr = String(cString: value)
+    let ok = keychainStore(service: serviceStr, account: keyStr, value: valueStr)
+    return ok ? 0 : 1
+}
+
+/// Load secure value for `(service, key)`. Returns strdup'd C string or nil.
+@_cdecl("synheart_native_secure_load")
+public func synheartNativeSecureLoad(
+    _ service: UnsafePointer<CChar>?,
+    _ key: UnsafePointer<CChar>?
+) -> UnsafeMutablePointer<CChar>? {
+    guard let service, let key else { return nil }
+    let serviceStr = String(cString: service)
+    let keyStr = String(cString: key)
+    guard let value = keychainLoad(service: serviceStr, account: keyStr) else {
+        return nil
+    }
+    return strdup(value)
+}
+
+/// Delete secure value for `(service, key)`. Returns 0 on success, non-zero on failure.
+@_cdecl("synheart_native_secure_delete")
+public func synheartNativeSecureDelete(
+    _ service: UnsafePointer<CChar>?,
+    _ key: UnsafePointer<CChar>?
+) -> Int32 {
+    guard let service, let key else { return 1 }
+    let serviceStr = String(cString: service)
+    let keyStr = String(cString: key)
+    let ok = keychainDelete(service: serviceStr, account: keyStr)
+    return ok ? 0 : 1
+}
+
 // MARK: - Helpers
 
 /// Base64url encode (no padding) per RFC 4648 §5.
@@ -183,4 +226,63 @@ private func derToRawRS(_ der: Data) -> Data? {
     let sPadded = Data(repeating: 0, count: max(0, 32 - s.count)) + s
 
     return rPadded + sPadded
+}
+
+private func keychainStore(service: String, account: String, value: String) -> Bool {
+    let data = Data(value.utf8)
+    let deleteQuery: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+    ]
+    SecItemDelete(deleteQuery as CFDictionary)
+
+    let addQuery: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+        kSecValueData as String: data,
+        kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+    ]
+    let status = SecItemAdd(addQuery as CFDictionary, nil)
+    if status != errSecSuccess {
+        AuthLogger.shared.error("synheart_native_secure_store failed: \(status)")
+        return false
+    }
+    return true
+}
+
+private func keychainLoad(service: String, account: String) -> String? {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+        kSecReturnData as String: true,
+        kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+
+    var result: AnyObject?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    if status == errSecItemNotFound {
+        return nil
+    }
+    guard status == errSecSuccess, let data = result as? Data else {
+        AuthLogger.shared.error("synheart_native_secure_load failed: \(status)")
+        return nil
+    }
+    return String(data: data, encoding: .utf8)
+}
+
+private func keychainDelete(service: String, account: String) -> Bool {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+    ]
+    let status = SecItemDelete(query as CFDictionary)
+    if status == errSecSuccess || status == errSecItemNotFound {
+        return true
+    }
+    AuthLogger.shared.error("synheart_native_secure_delete failed: \(status)")
+    return false
 }
