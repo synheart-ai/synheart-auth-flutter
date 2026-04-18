@@ -58,6 +58,11 @@ android {
         main.java.srcDirs += 'src/main/kotlin'
         // Include the native Kotlin SDK sources directly
         main.java.srcDirs += new File(projectDir, '../../synheart-auth-kotlin/lib/src/main/kotlin')
+        test.java.srcDirs += 'src/test/kotlin'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
     }
 }
 
@@ -68,4 +73,7 @@ dependencies {
     implementation "org.json:json:20231013"
     implementation "com.google.android.play:integrity:1.4.0"
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
+
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.jetbrains.kotlin:kotlin-test:2.1.10"
 }

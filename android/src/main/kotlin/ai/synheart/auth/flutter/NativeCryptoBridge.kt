@@ -305,7 +305,10 @@ object NativeCryptoBridge {
     /// Convert BigInteger byte array to exactly 32 bytes (left-padded, leading
     /// zero stripped). BigInteger.toByteArray() may return 33 bytes if the
     /// high bit is set (sign byte), or fewer than 32 if leading zeros.
-    private fun toUnsigned32(bytes: ByteArray): ByteArray {
+    ///
+    /// `internal` so JVM unit tests can exercise P-256 coordinate edge cases
+    /// without going through Android Keystore.
+    internal fun toUnsigned32(bytes: ByteArray): ByteArray {
         // Strip leading zero byte if present (BigInteger sign byte).
         val stripped = if (bytes.size > 32 && bytes[0] == 0.toByte()) {
             bytes.copyOfRange(1, bytes.size)
@@ -321,7 +324,13 @@ object NativeCryptoBridge {
     }
 
     /// Convert ASN.1 DER ECDSA signature to raw 64-byte R||S for P-256.
-    private fun derEcdsaToRawRS(der: ByteArray): ByteArray? {
+    ///
+    /// `internal` so JVM unit tests can round-trip real JDK-generated
+    /// signatures through the parser without Android Keystore. The Rust FFI
+    /// contract at `synheart-core-runtime/.../ffi_bridge.rs` requires the
+    /// compact r||s form, not DER; any regression here breaks registration
+    /// silently, so we want regression coverage.
+    internal fun derEcdsaToRawRS(der: ByteArray): ByteArray? {
         var offset = 0
         if (der.isEmpty() || der[offset] != 0x30.toByte()) return null
         offset += 1
