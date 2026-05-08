@@ -1,6 +1,6 @@
 # synheart-auth-flutter
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/synheart-ai/synheart-auth-flutter)
+[![Version](https://img.shields.io/badge/version-0.1.2-blue.svg)](https://github.com/synheart-ai/synheart-auth-flutter)
 [![Flutter](https://img.shields.io/badge/flutter-%3E%3D3.10.0-blue.svg)](https://flutter.dev)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
@@ -28,7 +28,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  synheart_auth: ^0.1.0
+  synheart_auth: ^0.1.2
 ```
 
 Or:
