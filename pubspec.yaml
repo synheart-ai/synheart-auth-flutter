@@ -1,6 +1,6 @@
 name: synheart_auth
 description: Flutter plugin for Synheart device authentication — ECDSA P-256 keys backed by iOS Secure Enclave or Android Keystore.
-version: 0.1.0
+version: 0.1.1
 homepage: https://github.com/synheart-ai/synheart-auth-flutter
 repository: https://github.com/synheart-ai/synheart-auth-flutter
 issue_tracker: https://github.com/synheart-ai/synheart-auth-flutter/issues

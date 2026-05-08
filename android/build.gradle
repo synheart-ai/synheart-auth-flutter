@@ -60,8 +60,6 @@ android {
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
-        // Include the native Kotlin SDK sources directly
-        main.java.srcDirs += new File(projectDir, '../../synheart-auth-kotlin/lib/src/main/kotlin')
         test.java.srcDirs += 'src/test/kotlin'
     }
 
@@ -71,6 +69,7 @@ android {
 }
 
 dependencies {
+    implementation "ai.synheart:synheart-auth:0.1.0"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:2.1.10"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"

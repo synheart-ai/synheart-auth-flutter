@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'synheart_auth'
-  s.version          = '0.1.0'
+  s.version          = '0.1.1'
   s.summary          = 'Flutter plugin for Synheart device authentication.'
   s.description      = 'Wraps the native SynheartAuth iOS SDK (Secure Enclave) for Flutter.'
   s.homepage         = 'https://github.com/synheart-ai/synheart-auth-flutter'
