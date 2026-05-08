@@ -1,0 +1,83 @@
+group 'ai.synheart.auth.flutter'
+version '1.0.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // AGP 8.5.1+ aligns native libs in the merged AAR to 16 KB
+        // boundaries, required by Google Play from Nov 2025 for apps
+        // targeting Android 15+ (compileSdk 35). Pinning to 8.7.3 to
+        // match the host app (which uses AGP 8.9.1) and avoid drift.
+        classpath 'com.android.tools.build:gradle:8.7.3'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.10'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'ai.synheart.auth.flutter'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+        externalNativeBuild {
+            cmake {
+                cppFlags ''
+            }
+        }
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.18.1'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+        // Include the native Kotlin SDK sources directly
+        main.java.srcDirs += new File(projectDir, '../../synheart-auth-kotlin/lib/src/main/kotlin')
+        test.java.srcDirs += 'src/test/kotlin'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.1.10"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+    implementation "org.json:json:20231013"
+    implementation "com.google.android.play:integrity:1.4.0"
+    implementation "androidx.security:security-crypto:1.1.0-alpha06"
+
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.jetbrains.kotlin:kotlin-test:2.1.10"
+}
