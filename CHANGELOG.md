@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-05-08
+
+### Fixed
+- iOS: Re-added `s.dependency 'SynheartAuth'` to `synheart_auth.podspec`.
+  The 0.1.2 podspec dropped the dep on the assumption that consumers
+  would pull the native SDK via SwiftPM, but pub.dev consumers using
+  CocoaPods (the default Flutter iOS toolchain) had no header/framework
+  search path for the `SynheartAuth` module, so `import SynheartAuth` in
+  `SynheartAuthPlugin.swift` failed with `Unable to resolve module
+  dependency: 'SynheartAuth'`. The dep is now declared explicitly so
+  CocoaPods wires up the search paths.
+
 ## [0.1.2] - 2026-05-08
 
 ### Changed
