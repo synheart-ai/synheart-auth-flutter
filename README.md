@@ -1,3 +1,5 @@
+🌐 Official website: [synheart.ai](https://synheart.ai) — Human State Interface (HSI) infrastructure for developers and AI systems.
+
 # synheart-auth-flutter
 
 [![Pub Version](https://img.shields.io/pub/v/synheart_auth.svg)](https://pub.dev/packages/synheart_auth)
