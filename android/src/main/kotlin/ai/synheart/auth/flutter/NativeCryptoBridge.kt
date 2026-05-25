@@ -16,6 +16,7 @@ import java.security.KeyStore
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -31,6 +32,24 @@ object NativeCryptoBridge {
     private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
     private const val KEY_ALIAS_PREFIX = "synheart_device_"
     private const val SECURE_PREFS_FILE = "synheart_core_secure_storage"
+
+    // Dedicated single-thread executor for Play Integrity callbacks.
+    //
+    // Default behaviour of `Task.addOnSuccessListener(listener)` (no
+    // executor) dispatches the callback on the Android main thread. The
+    // FFI worker isolate spins on `latch.await()` waiting for it, and if
+    // the main thread is busy (Flutter input handling, surface compositor
+    // callbacks, the IntegrityService binding callback itself) the latch
+    // resolution is queued behind that work — producing the perceived
+    // multi-second freeze on first consent grant. Routing the listeners
+    // to a background executor lets the latch flip the instant Play
+    // Services hands us a result.
+    private val integrityCallbackExecutor =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "syn-integrity-callback").apply {
+                isDaemon = true
+            }
+        }
 
 
     /// Application context captured during plugin initialization. Required for
@@ -188,11 +207,11 @@ object NativeCryptoBridge {
             val errorRef = AtomicReference<Exception?>(null)
 
             integrityManager.requestIntegrityToken(request)
-                .addOnSuccessListener { response ->
+                .addOnSuccessListener(integrityCallbackExecutor) { response ->
                     tokenRef.set(response.token())
                     latch.countDown()
                 }
-                .addOnFailureListener { e ->
+                .addOnFailureListener(integrityCallbackExecutor) { e ->
                     errorRef.set(e)
                     latch.countDown()
                 }

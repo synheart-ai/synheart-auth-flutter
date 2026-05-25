@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-05-24
+
+### Fixed
+- Android: route Play Integrity callbacks (`addOnSuccessListener` /
+  `addOnFailureListener`) through a dedicated single-thread executor
+  instead of the default Android main thread. Symptom this fixes:
+  during the first consent grant on a fresh install, the host app's
+  UI froze for several seconds while the FFI worker isolate sat on
+  `latch.await()` waiting for the Play Integrity result — the callback
+  was queued behind whatever else the main thread was doing (Flutter
+  input dispatch, surface compositor work, the IntegrityService
+  binding callback itself). With a dedicated executor (named
+  `syn-integrity-callback`, daemon thread) the latch resolves the
+  instant Play Services hands the result back, regardless of main-
+  thread load. Doesn't reduce the cold Play Integrity bind latency
+  itself (that's owned by Google Play Services) but it stops the
+  resolution from being held behind unrelated main-thread work.
+
 ## [0.1.4] - 2026-05-24
 
 ### Documentation
