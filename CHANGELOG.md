@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-05-24
+
+### Documentation
+- iOS: replaced the misleading "consumed via SwiftPM" podspec comment
+  with the actual incantation host Podfiles need. SynheartAuth is
+  distributed from git, not the CocoaPods trunk spec repo, so each
+  consuming app must declare the source explicitly:
+
+      pod 'SynheartAuth',
+          :git => 'https://github.com/synheart-ai/synheart-auth-swift.git',
+          :tag => 'v0.1.0'
+
+  No code or behaviour change; the `s.dependency 'SynheartAuth'` line
+  (restored in 0.1.3) remains. The previous comment implied SwiftPM
+  was sufficient, which led at least one downstream consumer to drop
+  the pod source and then hit `Unable to resolve module dependency:
+  'SynheartAuth'` at compile time.
+
 ## [0.1.3] - 2026-05-08
 
 ### Fixed
