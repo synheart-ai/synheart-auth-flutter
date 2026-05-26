@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-05-26
+
+### Added
+- Android: `NativeCryptoBridge` now warns via `Log.w` when any of its
+  three blocking @JvmStatic methods (`generateKey`, `signBytes`,
+  `getAttestation`) is invoked on the main thread. Each can park its
+  caller for hundreds of milliseconds to several seconds (Keystore
+  hardware-backed keygen, Play Integrity service bind, signature
+  IPC). The contract today is that the runtime drives them from a
+  background isolate's OS thread, but nothing in this file actually
+  checked it. The guard is cheap (one `Looper` identity compare),
+  only logs on the assertion failure, and adds no behaviour change
+  on the correct path — it just makes a regression visible the
+  instant it happens, instead of letting it surface as a silent ANR.
+
 ## [0.1.5] - 2026-05-24
 
 ### Fixed
