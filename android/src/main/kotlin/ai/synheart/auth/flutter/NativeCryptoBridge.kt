@@ -2,6 +2,7 @@ package ai.synheart.auth.flutter
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Looper
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -64,6 +65,25 @@ object NativeCryptoBridge {
         Log.i(TAG, "Context initialized")
     }
 
+    /// Diagnostic guard: the FFI callbacks below all block their calling
+    /// thread for hundreds of milliseconds to several seconds (Keystore
+    /// hardware-backed keygen, Play Integrity service bind, EncryptedSharedPrefs
+    /// init). The contract is that the Rust runtime drives them from a
+    /// background Dart isolate's OS thread, never the platform main thread —
+    /// but if a future caller wires this differently we want a loud signal,
+    /// not a silent ANR. Cheap to call; only logs when the assertion fails.
+    private fun warnIfOnMainThread(op: String) {
+        val main = Looper.getMainLooper()
+        if (main != null && main.thread === Thread.currentThread()) {
+            Log.w(
+                TAG,
+                "$op invoked on the main thread — this will block UI for keystone / " +
+                    "Play Integrity work and risks an ANR. Caller should dispatch to " +
+                    "a background thread (Dart-side Isolate.run, or kotlin Dispatchers.IO).",
+            )
+        }
+    }
+
     private fun storageKey(service: String, key: String): String = "$service::$key"
 
     private fun securePrefs(): SharedPreferences? {
@@ -100,6 +120,7 @@ object NativeCryptoBridge {
     /// Returns JSON: {"x":"<base64url>","y":"<base64url>"} or null on failure.
     @JvmStatic
     fun generateKey(deviceId: String): String? {
+        warnIfOnMainThread("generateKey")
         return try {
             val keyAlias = alias(deviceId)
             val spec = KeyGenParameterSpec.Builder(
@@ -146,6 +167,7 @@ object NativeCryptoBridge {
     /// The callback contract requires base64url of raw 64-byte R||S (not DER).
     @JvmStatic
     fun signBytes(deviceId: String, data: ByteArray): String? {
+        warnIfOnMainThread("signBytes")
         return try {
             val keyAlias = alias(deviceId)
             val ks = KeyStore.getInstance(KEYSTORE_PROVIDER)
@@ -185,6 +207,7 @@ object NativeCryptoBridge {
     /// or {"format":"none","blob":""} if Play Integrity is unavailable.
     @JvmStatic
     fun getAttestation(deviceId: String, challengeHash: ByteArray): String? {
+        warnIfOnMainThread("getAttestation")
         val ctx = appContext
         if (ctx == null) {
             Log.e(TAG, "getAttestation: appContext is null — was init() called?")
