@@ -6,6 +6,7 @@ import ai.synheart.auth.registration.AttestationProvider
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /// Play Integrity API implementation of [AttestationProvider].
@@ -23,21 +24,37 @@ class PlayIntegrityAttestationProvider(
                 .setNonce(nonce)
                 .build()
 
-            suspendCancellableCoroutine { continuation ->
-                integrityManager.requestIntegrityToken(request)
-                    .addOnSuccessListener { response ->
-                        val token = response.token()
-                        Log.i(tag, "Play Integrity token obtained (${token.length} chars)")
-                        continuation.resume(token)
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(tag, "Play Integrity failed: ${e.javaClass.simpleName}: ${e.message}", e)
-                        continuation.resume(null)
-                    }
+            // A stalled IntegrityService bind (no Play Store / unlinked package /
+            // sideloaded build) can leave both listeners un-invoked forever.
+            // Cap the wait so a hung bind resolves to null (attestation
+            // unavailable) instead of suspending registration indefinitely.
+            val token = withTimeoutOrNull(INTEGRITY_TIMEOUT_MS) {
+                suspendCancellableCoroutine { continuation ->
+                    integrityManager.requestIntegrityToken(request)
+                        .addOnSuccessListener { response ->
+                            val t = response.token()
+                            Log.i(tag, "Play Integrity token obtained (${t.length} chars)")
+                            continuation.resume(t)
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e(tag, "Play Integrity failed: ${e.javaClass.simpleName}: ${e.message}", e)
+                            continuation.resume(null)
+                        }
+                }
             }
+            if (token == null) {
+                Log.e(tag, "Play Integrity timed out after ${INTEGRITY_TIMEOUT_MS}ms — returning null")
+            }
+            token
         } catch (e: Exception) {
             Log.e(tag, "Play Integrity unavailable: ${e.javaClass.simpleName}: ${e.message}", e)
             null
         }
+    }
+
+    private companion object {
+        /// Hard cap on the Play Integrity token request. See
+        /// NativeCryptoBridge.INTEGRITY_TIMEOUT_SECONDS for rationale.
+        private const val INTEGRITY_TIMEOUT_MS = 30_000L
     }
 }

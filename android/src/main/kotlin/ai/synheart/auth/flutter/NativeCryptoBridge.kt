@@ -34,6 +34,18 @@ object NativeCryptoBridge {
     private const val KEY_ALIAS_PREFIX = "synheart_device_"
     private const val SECURE_PREFS_FILE = "synheart_core_secure_storage"
 
+    /// Hard cap on how long [getAttestation] blocks waiting for the Play
+    /// Integrity Task to resolve. Play Integrity is contractually obligated to
+    /// invoke one of the success/failure listeners, but a stalled
+    /// IntegrityService bind — no Play Store, an unlinked package, or a
+    /// sideloaded debug build where the cloud project can't be resolved — can
+    /// leave the Task pending indefinitely. Without a cap the calling FFI
+    /// isolate parks forever and device registration never reaches a terminal
+    /// state, so the host UI sits on "Setting up your workspace" with no error.
+    /// Generous enough to absorb a genuine cold bind on a slow network, short
+    /// enough that a hung bind fails fast and lets the runtime fall back / retry.
+    private const val INTEGRITY_TIMEOUT_SECONDS = 30L
+
     // Dedicated single-thread executor for Play Integrity callbacks.
     //
     // Default behaviour of `Task.addOnSuccessListener(listener)` (no
@@ -239,7 +251,18 @@ object NativeCryptoBridge {
                     latch.countDown()
                 }
 
-            latch.await()
+            // Bounded wait: see INTEGRITY_TIMEOUT_SECONDS. A false return means
+            // neither listener fired in time (stalled IntegrityService bind) —
+            // treat it as "attestation unavailable" rather than parking the
+            // calling isolate forever.
+            if (!latch.await(INTEGRITY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                Log.e(
+                    TAG,
+                    "getAttestation: Play Integrity timed out after " +
+                        "${INTEGRITY_TIMEOUT_SECONDS}s (no response from IntegrityService) — returning none",
+                )
+                return """{"format":"none","blob":""}"""
+            }
 
             val error = errorRef.get()
             if (error != null) {

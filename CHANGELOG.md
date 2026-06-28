@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-06-28
+
+### Changed
+- Android: bump the native `ai.synheart:synheart-auth` dependency to
+  `0.1.3`, which adds the matching 30-second Play Integrity attestation
+  timeout to the Kotlin SDK's `PlayIntegrityAttestationProvider`.
+- iOS: the native `SynheartAuth` Swift SDK dependency now targets `0.1.1`,
+  which bounds App Attest with a 30-second timeout. Host Podfiles pinning
+  the pod from git should use `:tag => 'v0.1.1'`.
+
+### Fixed
+- Android: `NativeCryptoBridge.getAttestation` now waits on the Play
+  Integrity `CountDownLatch` with a 30-second timeout instead of
+  blocking indefinitely. Play Integrity is supposed to invoke one of
+  its success/failure listeners, but a stalled `IntegrityService` bind
+  — no Play Store, an unlinked package, or a sideloaded debug build
+  whose cloud project can't be resolved — can leave the `Task` pending
+  forever. Before this fix the calling FFI isolate parked on
+  `latch.await()` with no exit, so device registration never reached a
+  terminal state (and could trip a SIGQUIT/ANR during the cold bind). A
+  timeout is now treated as `{"format":"none","blob":""}` (attestation
+  unavailable), letting the runtime fail fast and fall back / retry.
+  This complements 0.1.5 (callbacks off the main thread) and 0.1.6
+  (main-thread guard) — those addressed *slow* resolution; this
+  addresses resolution that *never arrives*.
+- Android: `PlayIntegrityAttestationProvider` (coroutine variant) wraps
+  its token request in `withTimeoutOrNull` with the same 30-second cap,
+  for parity with the JNI bridge path.
+
 ## [0.1.6] - 2026-05-26
 
 ### Added

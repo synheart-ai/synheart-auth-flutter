@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'synheart_auth'
-  s.version          = '0.1.5'
+  s.version          = '0.1.7'
   s.summary          = 'Flutter plugin for Synheart device authentication.'
   s.description      = 'Wraps the native SynheartAuth iOS SDK (Secure Enclave) for Flutter.'
   s.homepage         = 'https://github.com/synheart-ai/synheart-auth-flutter'
@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   # Flutter glue. Host Podfile must declare the `SynheartAuth` pod from
   # git (not on trunk):
-  #   pod 'SynheartAuth', :git => 'https://github.com/synheart-ai/synheart-auth-swift.git', :tag => '0.1.0'
+  #   pod 'SynheartAuth', :git => 'https://github.com/synheart-ai/synheart-auth-swift.git', :tag => 'v0.1.1'
   s.source_files     = 'Classes/*.{h,m,swift}'
   s.dependency 'Flutter'
   s.dependency 'SynheartAuth'
