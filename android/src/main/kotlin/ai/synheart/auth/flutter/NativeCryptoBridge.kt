@@ -11,6 +11,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
+import org.json.JSONObject
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -216,14 +217,21 @@ object NativeCryptoBridge {
     /// CountDownLatch until the async Play Integrity Task completes.
     ///
     /// Returns JSON: {"format":"play-integrity","blob":"<compact JOSE token>"}
-    /// or {"format":"none","blob":""} if Play Integrity is unavailable.
+    /// on success, or {"format":"none","blob":"","reason":"<why>"} when no
+    /// attestation material could be produced.
+    ///
+    /// The `reason` field is what lets the runtime tell a Play Integrity blip
+    /// (retry in seconds) apart from a de-Googled ROM (never going to work);
+    /// without it every failure looked identical and permanent. It is optional
+    /// in the contract — an older runtime ignores it, and a newer one reads its
+    /// absence as "unknown". See [PlayIntegrityReasons].
     @JvmStatic
     fun getAttestation(deviceId: String, challengeHash: ByteArray): String? {
         warnIfOnMainThread("getAttestation")
         val ctx = appContext
         if (ctx == null) {
             Log.e(TAG, "getAttestation: appContext is null — was init() called?")
-            return """{"format":"none","blob":""}"""
+            return unavailable(PlayIntegrityReasons.MISCONFIGURED)
         }
 
         return try {
@@ -261,28 +269,66 @@ object NativeCryptoBridge {
                     "getAttestation: Play Integrity timed out after " +
                         "${INTEGRITY_TIMEOUT_SECONDS}s (no response from IntegrityService) — returning none",
                 )
-                return """{"format":"none","blob":""}"""
+                return unavailable(PlayIntegrityReasons.TIMEOUT)
             }
 
             val error = errorRef.get()
             if (error != null) {
-                Log.e(TAG, "getAttestation: Play Integrity failed: ${error.javaClass.simpleName}: ${error.message}", error)
-                return """{"format":"none","blob":""}"""
+                val reason = PlayIntegrityReasons.forThrowable(error)
+                Log.e(
+                    TAG,
+                    "getAttestation: Play Integrity failed (reason=$reason): " +
+                        "${error.javaClass.simpleName}: ${error.message}",
+                    error,
+                )
+                return unavailable(reason)
             }
 
             val token = tokenRef.get()
             if (token.isNullOrEmpty()) {
+                // The success listener fired with nothing in it. That is Google
+                // misbehaving rather than this device being incapable, so it is
+                // worth another attempt.
                 Log.e(TAG, "getAttestation: Play Integrity returned empty token")
-                return """{"format":"none","blob":""}"""
+                return unavailable(PlayIntegrityReasons.TRANSIENT)
             }
 
             Log.i(TAG, "getAttestation($deviceId): Play Integrity token obtained (${token.length} chars)")
-            """{"format":"play-integrity","blob":"$token"}"""
-        } catch (e: Exception) {
-            Log.e(TAG, "getAttestation($deviceId) failed: ${e.javaClass.simpleName}: ${e.message}", e)
-            """{"format":"none","blob":""}"""
+            attested(token)
+        } catch (t: Throwable) {
+            // Throwable, not Exception. A missing or R8-stripped Play Integrity
+            // artifact throws NoClassDefFoundError, which is an Error — it used
+            // to escape this function straight into JNI and take the process
+            // with it. It means "this device cannot attest", not "crash".
+            val reason = PlayIntegrityReasons.forThrowable(t)
+            Log.e(
+                TAG,
+                "getAttestation($deviceId) failed (reason=$reason): " +
+                    "${t.javaClass.simpleName}: ${t.message}",
+                t,
+            )
+            unavailable(reason)
         }
     }
+
+    /// No attestation material, plus the reason the runtime should act on.
+    ///
+    /// Built with JSONObject rather than string interpolation: `reason` makes
+    /// this a three-field object, and hand-assembled JSON is exactly how an
+    /// unescaped value eventually slips in.
+    private fun unavailable(reason: String): String =
+        JSONObject()
+            .put("format", "none")
+            .put("blob", "")
+            .put("reason", reason)
+            .toString()
+
+    /// Real attestation material. No `reason` — a present blob makes it moot.
+    private fun attested(token: String): String =
+        JSONObject()
+            .put("format", "play-integrity")
+            .put("blob", token)
+            .toString()
 
     // ── 4. keyExists ────────────────────────────────────────────────────
 
