@@ -11,6 +11,15 @@ import kotlin.coroutines.resume
 
 /// Play Integrity API implementation of [AttestationProvider].
 /// Generates an integrity token bound to the given nonce.
+///
+/// This serves the **MethodChannel** auth stack (`ai.synheart.auth`, wired in
+/// SynheartAuthPlugin). [NativeCryptoBridge.getAttestation] serves the **JNI**
+/// stack that synheart-core-runtime calls. The two look like duplicates and are
+/// not — deleting either breaks one of the paths.
+///
+/// The reason vocabulary that [NativeCryptoBridge] reports is not available
+/// here: [AttestationProvider.generateProof] returns `String?`, so there is
+/// nowhere to put it without changing that SDK's interface.
 class PlayIntegrityAttestationProvider(
     private val context: Context
 ) : AttestationProvider {
@@ -46,8 +55,13 @@ class PlayIntegrityAttestationProvider(
                 Log.e(tag, "Play Integrity timed out after ${INTEGRITY_TIMEOUT_MS}ms — returning null")
             }
             token
-        } catch (e: Exception) {
-            Log.e(tag, "Play Integrity unavailable: ${e.javaClass.simpleName}: ${e.message}", e)
+        } catch (t: Throwable) {
+            // Throwable, not Exception: a missing or R8-stripped Play Integrity
+            // artifact throws NoClassDefFoundError, which is an Error and would
+            // otherwise propagate out of a call whose contract is "null when
+            // attestation is unavailable".
+            val reason = PlayIntegrityReasons.forThrowable(t)
+            Log.e(tag, "Play Integrity unavailable (reason=$reason): ${t.javaClass.simpleName}: ${t.message}", t)
             null
         }
     }
