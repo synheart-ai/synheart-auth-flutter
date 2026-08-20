@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-08-20
+
+### Added
+- Android: Play Integrity failures are now classified by whether retrying can
+  help. A new `PlayIntegrityReasons` helper maps Play Integrity error codes and
+  throwables onto the reason vocabulary the runtime understands — `transient`,
+  `timeout`, `quota`, `unsupported`, `misconfigured`, `unknown` — and
+  `NativeCryptoBridge.getAttestation` emits it as the `reason` field of its
+  `{"format":"none","blob":"","reason":"…"}` payload. Previously every failure
+  looked alike to synheart-core-runtime, so a network blip worth retrying in
+  seconds and a device that can never attest were both reported as permanent.
+- Android: unit tests covering the error-code and throwable classification.
+
+### Fixed
+- Android: a missing or R8-stripped Play Integrity artifact no longer takes the
+  process down. `NoClassDefFoundError` (an `Error`, not an `Exception`) used to
+  escape `getAttestation` into JNI; `PlayIntegrityReasons.forThrowable` accepts
+  `Throwable` and degrades these to `unsupported`.
+
+### Notes
+- The reason tokens above are a cross-repo contract: they must stay in step with
+  `AttestationReason` in synheart-core-runtime
+  (`crates/core-runtime/src/auth/types.rs` and `book/src/auth/platform.md`).
+  Adding a token is safe — the Rust side degrades anything unrecognized to
+  `unknown` — but renaming an existing one is a breaking change.
+
 ## [0.1.7] - 2026-06-28
 
 ### Changed

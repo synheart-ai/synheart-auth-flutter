@@ -30,7 +30,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  synheart_auth: ^0.1.3
+  synheart_auth: ^0.1.8
 ```
 
 Or:
