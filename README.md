@@ -30,7 +30,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  synheart_auth: ^0.1.3
+  synheart_auth: ^0.1.8
 ```
 
 Or:
@@ -44,8 +44,14 @@ flutter pub add synheart_auth
 The plugin depends on the native Synheart Auth SDKs to do the actual
 crypto. They are published separately:
 
-- **Android**: [synheart-auth-kotlin](https://github.com/synheart-ai/synheart-auth-kotlin) — until the artifact is published to Maven Central, the Android plugin pulls Kotlin sources from a sibling checkout at `../synheart-auth-kotlin/`. Clone both repos side-by-side, or vendor the Kotlin sources into your app.
-- **iOS**: [synheart-auth-swift](https://github.com/synheart-ai/synheart-auth-swift) — add as a Swift Package dependency in your host app.
+- **Android**: [synheart-auth-kotlin](https://github.com/synheart-ai/synheart-auth-kotlin) — resolved automatically from Maven Central as `ai.synheart:synheart-auth:0.1.3`. Nothing to do in your app.
+- **iOS**: [synheart-auth-swift](https://github.com/synheart-ai/synheart-auth-swift) — **requires a line in your Podfile.** The pod is not on CocoaPods trunk, so although this plugin's podspec declares the `SynheartAuth` dependency, it cannot be resolved unless your host Podfile points at the git source:
+
+  ```ruby
+  pod 'SynheartAuth',
+    :git => 'https://github.com/synheart-ai/synheart-auth-swift.git',
+    :tag => 'v0.1.1'
+  ```
 
 ## Quick Start
 
@@ -97,6 +103,7 @@ All errors are subclasses of `SynheartAuthError`:
 |-------|-------------|
 | `NetworkError` | Network connectivity failure |
 | `ChallengeExpired` | Registration challenge timed out |
+| `AttestationUnavailable` | No hardware attestation could be produced (see below) |
 | `KeyInvalidated` | Device key was invalidated (biometric change, etc.) |
 | `ClockSkew` | Client/server clock difference exceeds threshold |
 | `AlreadyRegistered` | Device already registered for this app |
@@ -107,6 +114,27 @@ All errors are subclasses of `SynheartAuthError`:
 | `CryptoError` | Native crypto operation failed |
 | `StorageError` | Persistent state read/write failed |
 | `InvalidStateTransition` | Lifecycle violation (see `DeviceAuthState`) |
+
+#### Attestation failures
+
+`AttestationUnavailable` means no hardware attestation material could be
+produced. On Android the plugin also classifies *why*, so the runtime can tell
+a blip apart from a dead end. The reason travels natively to
+synheart-core-runtime rather than on the Dart error, but it is the signal
+behind retry behaviour you may observe:
+
+| Reason | Retryable | Cause |
+|--------|-----------|-------|
+| `transient` | Yes, shortly | Network error, Play server unavailable, service binding failure |
+| `timeout` | Yes, shortly | Play Integrity did not answer inside the 30-second cap |
+| `quota` | Yes, later | Rate limited (`TOO_MANY_REQUESTS`) |
+| `unsupported` | No | Device can never attest — Play Store/Services missing, outdated, or no account; also a missing or R8-stripped Play Integrity artifact |
+| `misconfigured` | No, needs a developer | Play Console linkage, cloud project number, or nonce construction |
+| `unknown` | No | Unrecognized failure; not guessed at either way |
+
+These tokens are a contract with `AttestationReason` in
+synheart-core-runtime. Adding one is safe — the Rust side degrades anything
+unrecognized to `unknown` — but renaming one is a breaking change.
 
 ## Integration with synheart-core
 
