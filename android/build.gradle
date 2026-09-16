@@ -45,7 +45,9 @@ android {
     externalNativeBuild {
         cmake {
             path 'src/main/cpp/CMakeLists.txt'
-            version '3.18.1'
+            // 3.18.1 ships an x86_64-only ninja; on Apple silicon without Rosetta
+            // (macOS 27) it cannot start. 3.22.1 is universal and >= the 3.18 minimum.
+            version '3.22.1'
         }
     }
 
