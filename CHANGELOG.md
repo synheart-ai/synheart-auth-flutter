@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-09-18
+
+### Fixed
+- Android: pinned the CMake version to 3.22.1. The 3.18.1 toolchain ships an
+  x86_64-only `ninja`, which cannot start on Apple silicon without Rosetta
+  (macOS 27), breaking the native build. 3.22.1 is a universal binary and still
+  satisfies the project's 3.18 minimum.
+
+### Documentation
+- Corrected stale native SDK setup instructions and documented attestation
+  failure handling.
+
 ## [0.1.8] - 2026-08-20
 
 ### Added
