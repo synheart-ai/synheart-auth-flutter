@@ -3,6 +3,7 @@ package ai.synheart.auth.flutter
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Looper
+import android.os.SystemClock
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -98,6 +99,15 @@ object NativeCryptoBridge {
     }
 
     private fun storageKey(service: String, key: String): String = "$service::$key"
+
+    /// Bounded retry budget for a transiently unavailable secure store
+    /// (Keystore not ready right after boot, `UserNotAuthenticatedException`,
+    /// OEM Keystore hiccups). ~1 s total (150 + 300 + 600 ms) — the storage
+    /// callbacks run off the main thread (see the Looper guard above), and the
+    /// runtime holds its mutex across `set_storage_callbacks`, so this stays
+    /// short on purpose.
+    private val secureLoadAttempts = 4
+    private val secureLoadInitialBackoffMs = 150L
 
     private fun securePrefs(): SharedPreferences? {
         val ctx = appContext ?: return null
@@ -384,16 +394,53 @@ object NativeCryptoBridge {
 
     // ── 7. secureLoad (SMK storage callback) ───────────────────────────
 
-    /// Load secure value for `(service, key)`. Returns null if missing/error.
+    /// Load secure value for `(service, key)`.
+    ///
+    /// Returns null ONLY when the key is genuinely absent. A storage failure —
+    /// `EncryptedSharedPreferences` could not be created, or the read threw —
+    /// is retried with a short bounded backoff and, if it still fails, ALSO
+    /// returns null, because the C callback has no error channel. On a runtime
+    /// >= 0.31.1 the provisioning marker turns that null into
+    /// `ERR_SECURE_STORAGE_UNAVAILABLE` (retryable) instead of a re-minted
+    /// storage master key; on an older runtime the re-mint — which orphans
+    /// every blob sealed so far — remains (SDK-CONTRACT-CHANGES §4.4).
+    /// Previously any failure returned null on the first try and read as
+    /// "fresh install".
     @JvmStatic
     fun secureLoad(service: String, key: String): String? {
-        val prefs = securePrefs() ?: return null
-        return try {
-            prefs.getString(storageKey(service, key), null)
-        } catch (e: Exception) {
-            Log.e(TAG, "secureLoad($service, $key) failed: ${e.message}", e)
-            null
+        val storageKey = storageKey(service, key)
+        var lastError: Throwable? = null
+        var backoffMs = secureLoadInitialBackoffMs
+        for (attempt in 1..secureLoadAttempts) {
+            val prefs = securePrefs()
+            if (prefs != null) {
+                try {
+                    // `contains` is the absent/present question; a null value
+                    // for a present key is treated as absent too.
+                    if (!prefs.contains(storageKey)) return null
+                    return prefs.getString(storageKey, null)
+                } catch (e: Exception) {
+                    lastError = e
+                }
+            }
+            if (attempt < secureLoadAttempts) {
+                Log.w(
+                    TAG,
+                    "secureLoad($service, $key): secure storage unavailable " +
+                        "(${lastError?.message ?: "prefs init failed"}), retry $attempt/${secureLoadAttempts - 1}",
+                )
+                SystemClock.sleep(backoffMs)
+                backoffMs *= 2
+            }
         }
+        Log.e(
+            TAG,
+            "secureLoad($service, $key): secure storage unavailable after " +
+                "$secureLoadAttempts attempts — returning null, which the runtime " +
+                "cannot tell from absent",
+            lastError,
+        )
+        return null
     }
 
     // ── 8. secureDelete (SMK storage callback) ─────────────────────────

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — `secure_load` no longer reports a failed read as "no such key"
+
+- **iOS:** `synheart_native_secure_load` returned NULL for every Keychain
+  status other than success — including `errSecInteractionNotAllowed` (device
+  locked / before first unlock) and `errSecNotAvailable`. The runtime reads
+  NULL as "absent", so one locked-Keychain launch minted a new storage master
+  key over the existing one and orphaned every sealed blob. Absence
+  (`errSecItemNotFound`) is now the only immediate NULL; transient statuses are
+  retried with a bounded ~1.5 s backoff; other failures are logged with their
+  `OSStatus`. A non-UTF-8 item is reported as unavailable, not absent.
+- **Android:** `secureLoad` returned null whenever `EncryptedSharedPreferences`
+  could not be created (Keystore not ready after boot, OEM Keystore faults) or
+  the read threw. It now distinguishes absent (`contains == false`) from
+  unavailable, retries the latter with a bounded ~1 s backoff, and logs the
+  cause.
+- Both callbacks still have to return NULL when storage is genuinely
+  unavailable — the C signature has no error channel. On runtime ≥ 0.31.1 the
+  provisioning marker turns that into `ERR_SECURE_STORAGE_UNAVAILABLE`
+  (retryable) rather than a re-mint; older runtimes keep the re-mint exposure.
+
 ## [0.1.9] - 2026-09-18
 
 ### Fixed
