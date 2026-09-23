@@ -153,10 +153,24 @@ public func synheartNativeSecureLoad(
     guard let service, let key else { return nil }
     let serviceStr = String(cString: service)
     let keyStr = String(cString: key)
-    guard let value = keychainLoad(service: serviceStr, account: keyStr) else {
+    switch keychainLoadWithRetry(service: serviceStr, account: keyStr) {
+    case .found(let value):
+        return strdup(value)
+    case .absent:
+        // The only case NULL is meant to express: no such item.
+        return nil
+    case .unavailable(let status):
+        // The C signature has no error channel, so this too must be NULL. On a
+        // runtime >= 0.31.1 the provisioning marker turns it into
+        // ERR_SECURE_STORAGE_UNAVAILABLE (retryable) instead of a re-minted
+        // storage master key; on an older runtime it still reads as "absent"
+        // and the re-mint — which orphans every blob sealed so far — remains.
+        AuthLogger.shared.error(
+            "synheart_native_secure_load(\(serviceStr), \(keyStr)): Keychain "
+            + "unavailable (OSStatus \(status)) after \(keychainLoadMaxAttempts) "
+            + "attempts — returning NULL, which the runtime cannot tell from absent")
         return nil
     }
-    return strdup(value)
 }
 
 /// Delete secure value for `(service, key)`. Returns 0 on success, non-zero on failure.
@@ -252,7 +266,26 @@ private func keychainStore(service: String, account: String, value: String) -> B
     return true
 }
 
-private func keychainLoad(service: String, account: String) -> String? {
+/// Outcome of a Keychain read. Kept as three cases because the C callback can
+/// express only two (pointer or NULL) and the runtime reads NULL as "no such
+/// key": collapsing a *failed* read into NULL is what made a locked Keychain
+/// look like a fresh install and re-mint the storage master key over the
+/// existing one (SDK-CONTRACT-CHANGES §4.4).
+private enum KeychainLoad {
+    case found(String)
+    case absent
+    case unavailable(OSStatus)
+}
+
+/// Bounded retry budget for a transiently unavailable Keychain. Total wait is
+/// ~1.5 s (100 + 200 + 400 + 800 ms), short enough to hold the runtime mutex
+/// during `set_storage_callbacks` without tripping a launch watchdog, long
+/// enough to ride out the unlock transition and the occasional
+/// errSecNotAvailable right after boot.
+private let keychainLoadMaxAttempts = 5
+private let keychainLoadInitialBackoffMicros: UInt32 = 100_000
+
+private func keychainLoadOnce(service: String, account: String) -> KeychainLoad {
     let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: service,
@@ -264,13 +297,53 @@ private func keychainLoad(service: String, account: String) -> String? {
     var result: AnyObject?
     let status = SecItemCopyMatching(query as CFDictionary, &result)
     if status == errSecItemNotFound {
-        return nil
+        return .absent
     }
     guard status == errSecSuccess, let data = result as? Data else {
-        AuthLogger.shared.error("synheart_native_secure_load failed: \(status)")
-        return nil
+        return .unavailable(status)
     }
-    return String(data: data, encoding: .utf8)
+    guard let value = String(data: data, encoding: .utf8) else {
+        // The item exists but is not the UTF-8 the runtime wrote. Not absent —
+        // reporting it as such would re-mint over a real, if unreadable, key.
+        return .unavailable(errSecDecode)
+    }
+    return .found(value)
+}
+
+/// Statuses worth waiting on: the item may well exist, the store just cannot
+/// serve it right now. Anything else (bad params, entitlement, decode) is
+/// reported immediately.
+private func keychainStatusIsTransient(_ status: OSStatus) -> Bool {
+    switch status {
+    case errSecInteractionNotAllowed,  // device locked / before first unlock
+         errSecNotAvailable,           // securityd not ready
+         errSecIO:
+        return true
+    default:
+        return false
+    }
+}
+
+/// `keychainLoadOnce` with a bounded backoff on transient failures. Never
+/// converts a failure into `.absent`.
+private func keychainLoadWithRetry(service: String, account: String) -> KeychainLoad {
+    var backoff = keychainLoadInitialBackoffMicros
+    for attempt in 1...keychainLoadMaxAttempts {
+        let outcome = keychainLoadOnce(service: service, account: account)
+        guard case .unavailable(let status) = outcome,
+              keychainStatusIsTransient(status),
+              attempt < keychainLoadMaxAttempts else {
+            return outcome
+        }
+        AuthLogger.shared.error(
+            "synheart_native_secure_load(\(service), \(account)): Keychain "
+            + "transiently unavailable (OSStatus \(status)), retry \(attempt)/"
+            + "\(keychainLoadMaxAttempts - 1)")
+        usleep(backoff)
+        backoff *= 2
+    }
+    // Unreachable: the loop returns on its last iteration.
+    return .absent
 }
 
 private func keychainDelete(service: String, account: String) -> Bool {
