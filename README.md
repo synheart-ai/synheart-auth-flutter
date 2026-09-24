@@ -45,12 +45,12 @@ The plugin depends on the native Synheart Auth SDKs to do the actual
 crypto. They are published separately:
 
 - **Android**: [synheart-auth-kotlin](https://github.com/synheart-ai/synheart-auth-kotlin) — resolved automatically from Maven Central as `ai.synheart:synheart-auth:0.1.3`. Nothing to do in your app.
-- **iOS**: [synheart-auth-swift](https://github.com/synheart-ai/synheart-auth-swift) — **requires a line in your Podfile.** The pod is not on CocoaPods trunk, so although this plugin's podspec declares the `SynheartAuth` dependency, it cannot be resolved unless your host Podfile points at the git source:
+- **iOS**: [synheart-auth-swift](https://github.com/synheart-ai/synheart-auth-swift) — the `SynheartAuth` pod is the **only** iOS implementation: all `synheart_native_*` crypto and Keychain callbacks live there, this plugin contributes Flutter glue only. CocoaPods trunk carries `SynheartAuth 0.1.0`, which predates the 0.1.1 App Attest timeout and the 0.1.2 Keychain absent-vs-unavailable fix, so **pin the pod in your Podfile**:
 
   ```ruby
   pod 'SynheartAuth',
     :git => 'https://github.com/synheart-ai/synheart-auth-swift.git',
-    :tag => 'v0.1.1'
+    :tag => 'v0.1.2'
   ```
 
 ## Quick Start
