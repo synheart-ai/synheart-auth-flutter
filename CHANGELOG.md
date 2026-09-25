@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-09-24
+
+### Fixed — iOS: the plugin's own Keychain bridge was never compiled
+
+- **`ios/Classes/SynheartAuth/Crypto/NativeCryptoBridge.swift` has been
+  removed.** The podspec compiles `Classes/*.swift` only, so that file — and
+  with it the iOS half of the 0.1.10 `secure_load` fix — never made it into
+  any host app. Every `synheart_native_*` symbol the Dart side resolves on
+  iOS comes from the `SynheartAuth` pod (synheart-auth-swift), whose FFI
+  module defines all eight (five crypto, three secure-storage). The 0.1.10
+  changelog entry for iOS therefore described code that was not running; the
+  fix itself ships in **synheart-auth-swift 0.1.2**, which also applies the
+  same absent-vs-unavailable classification to `key_exists` / `sign_bytes`.
+  The Android half of 0.1.10 (`NativeCryptoBridge.kt`) is compiled and was
+  correct as described.
+- Podspec and README now say so, and pin the host Podfile at
+  `SynheartAuth` **v0.1.2**. The README previously claimed the pod was not on
+  CocoaPods trunk; trunk carries `0.1.0`, which is what an unpinned host
+  resolves and which predates both the 0.1.1 App Attest timeout and this fix.
+
 ## [0.1.10] - 2026-09-23
 
 ### Fixed — `secure_load` no longer reports a failed read as "no such key"
