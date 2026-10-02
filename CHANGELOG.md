@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Android: native `ai.synheart:synheart-auth` dependency `0.1.3` → `0.1.4`
+  (StrongBox → TEE fallback in `HardwareKeyManager`; `CryptoError` keeps its
+  cause).
+
 ## [0.1.11] - 2026-09-24
 
 ### Fixed — iOS: the plugin's own Keychain bridge was never compiled
