@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `signRequest` now signs with the runtime-registered device key
+
+- **`signRequest`, `isRegistered` and `getDeviceId` never saw the device the
+  runtime registered.** They delegated to the native SDK's `SynheartAuth.shared`,
+  which keeps its own `appId`-scoped store. Registration runs in
+  synheart-core-runtime, which writes a different store through this plugin's
+  crypto/storage callbacks — the device record at `("synheart-core",
+  "device_record:<appId>")` and a key keyed by `device_id` (Android Keystore
+  `synheart_device_<id>`, iOS Keychain `ai.synheart.auth.fficrypto`). Nothing
+  could populate the native SDK store (Dart `registerDevice` throws before
+  reaching the channel, and on Android that store is in-memory), so standalone
+  `signRequest` always threw `NotRegistered`, contrary to the README.
+- The three methods now read the runtime's identity first — usable only when
+  both the record and its key exist, the runtime's own rule — and sign with
+  that key through the same callbacks the runtime uses (`NativeCryptoBridge` on
+  Android, the `SynheartAuth` pod's `synheart_native_*` on iOS). Message,
+  signature encoding and header values match the runtime's Mode A ingest
+  signing exactly (`METHOD\npath\ntimestamp\n` + body, SHA-256 ECDSA P-256,
+  DER, standard base64, `X-Synheart-Sig-Version: 1`). No header or wire format
+  changed. With no runtime identity they fall back to the native SDK path, so
+  behaviour there is unchanged.
+- `correctClockSkew` now also offsets these signatures.
+- These calls now run off the platform main thread (secure-storage reads retry
+  for up to ~1–1.5 s; Keystore / Secure Enclave signing blocks).
+- `resetDeviceIdentity` is unchanged and still clears only the native SDK
+  store; it does not remove the runtime identity (the runtime's logout is the
+  only supported route to a new `device_id`).
+
 ### Changed
 
 - Android: native `ai.synheart:synheart-auth` dependency `0.1.3` → `0.1.4`

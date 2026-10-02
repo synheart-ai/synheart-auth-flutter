@@ -192,16 +192,7 @@ object NativeCryptoBridge {
     fun signBytes(deviceId: String, data: ByteArray): String? {
         warnIfOnMainThread("signBytes")
         return try {
-            val keyAlias = alias(deviceId)
-            val ks = KeyStore.getInstance(KEYSTORE_PROVIDER)
-            ks.load(null)
-            val entry = ks.getEntry(keyAlias, null) as? KeyStore.PrivateKeyEntry
-                ?: throw IllegalStateException("Key not found: $keyAlias")
-
-            val sig = Signature.getInstance("SHA256withECDSA")
-            sig.initSign(entry.privateKey)
-            sig.update(data)
-            val derSignature = sig.sign()
+            val derSignature = signDerOrThrow(deviceId, data)
             val rawSignature = derEcdsaToRawRS(derSignature)
                 ?: throw IllegalStateException(
                     "DER->R||S conversion failed (derLen=${derSignature.size})",
@@ -216,6 +207,33 @@ object NativeCryptoBridge {
             Log.e(TAG, "signBytes($deviceId) failed: ${e.message}", e)
             null
         }
+    }
+
+    /// SHA256withECDSA over [data] with the runtime-registered device key,
+    /// as ASN.1 DER — the form `X-Synheart-Signature` carries. Null on any
+    /// failure (logged). Used by the plugin's own `signRequest`, which signs
+    /// with the same key the runtime registered rather than a second one.
+    internal fun signDer(deviceId: String, data: ByteArray): ByteArray? {
+        warnIfOnMainThread("signDer")
+        return try {
+            signDerOrThrow(deviceId, data)
+        } catch (e: Exception) {
+            Log.e(TAG, "signDer($deviceId) failed: ${e.message}", e)
+            null
+        }
+    }
+
+    private fun signDerOrThrow(deviceId: String, data: ByteArray): ByteArray {
+        val keyAlias = alias(deviceId)
+        val ks = KeyStore.getInstance(KEYSTORE_PROVIDER)
+        ks.load(null)
+        val entry = ks.getEntry(keyAlias, null) as? KeyStore.PrivateKeyEntry
+            ?: throw IllegalStateException("Key not found: $keyAlias")
+
+        val sig = Signature.getInstance("SHA256withECDSA")
+        sig.initSign(entry.privateKey)
+        sig.update(data)
+        return sig.sign()
     }
 
     // ── 3. getAttestation ───────────────────────────────────────────────

@@ -18,6 +18,19 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var applicationContext: android.content.Context? = null
 
+    private val clockOffset = ClockOffset()
+
+    /// Signs with the identity synheart-core-runtime registered — the only
+    /// identity a host app can have, since registration runs in the runtime.
+    /// See [RuntimeDeviceSigner].
+    private val runtimeSigner = RuntimeDeviceSigner(
+        secureLoad = NativeCryptoBridge::secureLoad,
+        keyExists = NativeCryptoBridge::keyExists,
+        signDer = NativeCryptoBridge::signDer,
+        epochSeconds = clockOffset::correctedEpochSeconds,
+        base64 = { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) },
+    )
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "ai.synheart.auth")
         channel.setMethodCallHandler(this)
@@ -52,10 +65,21 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                 result.success(null)
             }
 
+            // isRegistered / getDeviceId / signRequest read the runtime's
+            // identity first (secure-storage reads can retry for ~1 s and
+            // Keystore signing is an IPC, so off the main thread), then fall
+            // back to the native SDK's own store, which is what 0.1.11 and
+            // earlier read exclusively.
             "isRegistered" -> {
                 val appId = call.argument<String>("appId")
                     ?: return result.error("INVALID_ARGS", "Missing appId", null)
-                result.success(ai.synheart.auth.SynheartAuth.shared.isRegistered(appId))
+                scope.launch {
+                    val registered = withContext(Dispatchers.IO) {
+                        runtimeSigner.deviceId(appId) != null ||
+                            ai.synheart.auth.SynheartAuth.shared.isRegistered(appId)
+                    }
+                    result.success(registered)
+                }
             }
 
             "registerDevice" -> {
@@ -89,31 +113,33 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
                     ?: return result.error("INVALID_ARGS", "Missing path", null)
                 val bodyBytes = call.argument<ByteArray>("bodyBytes")
 
-                try {
-                    val headers = ai.synheart.auth.SynheartAuth.shared.signRequest(
-                        appId, method, path, bodyBytes
-                    )
-                    result.success(
-                        mapOf(
-                            "appId" to headers.appId,
-                            "deviceId" to headers.deviceId,
-                            "signature" to headers.signature,
-                            "timestamp" to headers.timestamp,
-                            "nonce" to headers.nonce,
-                            "signatureVersion" to headers.signatureVersion
-                        )
-                    )
-                } catch (e: ai.synheart.auth.models.SynheartAuthError) {
-                    result.error(errorCode(e), e.message, null)
-                } catch (e: Exception) {
-                    result.error("UNKNOWN", e.message, null)
+                scope.launch {
+                    try {
+                        val signed = withContext(Dispatchers.IO) {
+                            runtimeSigner.sign(appId, method, path, bodyBytes)
+                                ?: nativeSdkSign(appId, method, path, bodyBytes)
+                        }
+                        result.success(signed)
+                    } catch (e: RuntimeDeviceSigner.SigningFailed) {
+                        result.error("CRYPTO_ERROR", e.message, null)
+                    } catch (e: ai.synheart.auth.models.SynheartAuthError) {
+                        result.error(errorCode(e), e.message, null)
+                    } catch (e: Exception) {
+                        result.error("UNKNOWN", e.message, null)
+                    }
                 }
             }
 
             "getDeviceId" -> {
                 val appId = call.argument<String>("appId")
                     ?: return result.error("INVALID_ARGS", "Missing appId", null)
-                result.success(ai.synheart.auth.SynheartAuth.shared.getDeviceId(appId))
+                scope.launch {
+                    val deviceId = withContext(Dispatchers.IO) {
+                        runtimeSigner.deviceId(appId)
+                            ?: ai.synheart.auth.SynheartAuth.shared.getDeviceId(appId)
+                    }
+                    result.success(deviceId)
+                }
             }
 
             "rotateKey" -> {
@@ -141,12 +167,36 @@ class SynheartAuthPlugin : FlutterPlugin, MethodCallHandler {
             "correctClockSkew" -> {
                 val serverTimestamp = call.argument<Double>("serverTimestamp")
                     ?: return result.error("INVALID_ARGS", "Missing serverTimestamp", null)
+                clockOffset.update(serverTimestamp)
                 ai.synheart.auth.SynheartAuth.shared.correctClockSkew(serverTimestamp)
                 result.success(null)
             }
 
             else -> result.notImplemented()
         }
+    }
+
+    /// The 0.1.11-and-earlier path: the native SDK's own app_id-scoped store. Nothing
+    /// in a host app can register into it (registration runs in the runtime),
+    /// so in practice this raises NotRegistered; kept as the fallback so a
+    /// device without a runtime identity behaves exactly as before.
+    private fun nativeSdkSign(
+        appId: String,
+        method: String,
+        path: String,
+        bodyBytes: ByteArray?,
+    ): Map<String, String> {
+        val headers = ai.synheart.auth.SynheartAuth.shared.signRequest(
+            appId, method, path, bodyBytes
+        )
+        return mapOf(
+            "appId" to headers.appId,
+            "deviceId" to headers.deviceId,
+            "signature" to headers.signature,
+            "timestamp" to headers.timestamp,
+            "nonce" to headers.nonce,
+            "signatureVersion" to headers.signatureVersion
+        )
     }
 
     private fun setLoggingEnabledIfSupported(enabled: Boolean) {

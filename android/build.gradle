@@ -81,4 +81,6 @@ dependencies {
 
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.jetbrains.kotlin:kotlin-test:2.1.10"
+    // The android.jar org.json is a stub under unit tests; use the real one.
+    testImplementation "org.json:json:20231013"
 }

@@ -8,6 +8,19 @@ import SynheartAuth
 /// The native SDK handles all Secure Enclave crypto, Keychain storage, and networking.
 public class SynheartAuthPlugin: NSObject, FlutterPlugin {
 
+    private let clockOffset = ClockOffset()
+
+    /// Keychain reads can retry for ~1.5 s and Secure Enclave signing blocks,
+    /// so runtime-identity work stays off the platform thread.
+    private let workQueue = DispatchQueue(label: "ai.synheart.auth.flutter.signing", qos: .userInitiated)
+
+    private func runOffMain(_ result: @escaping FlutterResult, _ work: @escaping () -> Any?) {
+        workQueue.async {
+            let value = work()
+            DispatchQueue.main.async { result(value) }
+        }
+    }
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         // Keep synheart_native_* @_cdecl symbols alive so the static linker
         // does not strip them before DynamicLibrary.process() can resolve them.
@@ -38,7 +51,13 @@ public class SynheartAuthPlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: "INVALID_ARGS", message: "Missing appId", details: nil))
                 return
             }
-            result(SynheartAuth.shared.isRegistered(appId: appId))
+            // isRegistered / getDeviceId / signRequest read the runtime's
+            // identity first, then fall back to the native SDK's own store —
+            // the only store 0.1.11 and earlier read.
+            runOffMain(result) {
+                RuntimeDeviceSigner.deviceId(appId: appId) != nil
+                    || SynheartAuth.shared.isRegistered(appId: appId)
+            }
 
         case "registerDevice":
             guard let appId = args["appId"] as? String else {
@@ -67,25 +86,30 @@ public class SynheartAuthPlugin: NSObject, FlutterPlugin {
                 return
             }
             let bodyBytes = (args["bodyBytes"] as? FlutterStandardTypedData)?.data
-            do {
-                let headers = try SynheartAuth.shared.signRequest(
-                    appId: appId,
-                    method: method,
-                    path: path,
-                    bodyBytes: bodyBytes
-                )
-                result([
-                    "appId": headers.appId,
-                    "deviceId": headers.deviceId,
-                    "signature": headers.signature,
-                    "timestamp": headers.timestamp,
-                    "nonce": headers.nonce,
-                    "signatureVersion": headers.signatureVersion,
-                ])
-            } catch let error as SynheartAuthError {
-                result(flutterError(from: error))
-            } catch {
-                result(FlutterError(code: "UNKNOWN", message: error.localizedDescription, details: nil))
+            let epochSeconds = clockOffset.correctedEpochSeconds()
+            runOffMain(result) {
+                do {
+                    if let signed = try RuntimeDeviceSigner.sign(
+                        appId: appId,
+                        method: method,
+                        path: path,
+                        bodyBytes: bodyBytes,
+                        epochSeconds: epochSeconds
+                    ) {
+                        return signed
+                    }
+                    return try self.nativeSdkSign(appId: appId, method: method, path: path, bodyBytes: bodyBytes)
+                } catch is RuntimeDeviceSigner.SigningFailed {
+                    return FlutterError(
+                        code: "CRYPTO_ERROR",
+                        message: "Signing with the runtime device key failed",
+                        details: nil
+                    )
+                } catch let error as SynheartAuthError {
+                    return self.flutterError(from: error)
+                } catch {
+                    return FlutterError(code: "UNKNOWN", message: error.localizedDescription, details: nil)
+                }
             }
 
         case "getDeviceId":
@@ -93,7 +117,10 @@ public class SynheartAuthPlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: "INVALID_ARGS", message: "Missing appId", details: nil))
                 return
             }
-            result(SynheartAuth.shared.getDeviceId(appId: appId))
+            runOffMain(result) {
+                RuntimeDeviceSigner.deviceId(appId: appId)
+                    ?? SynheartAuth.shared.getDeviceId(appId: appId)
+            }
 
         case "rotateKey":
             guard let appId = args["appId"] as? String else {
@@ -124,12 +151,34 @@ public class SynheartAuthPlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: "INVALID_ARGS", message: "Missing serverTimestamp", details: nil))
                 return
             }
+            clockOffset.update(serverTimestamp: serverTimestamp)
             SynheartAuth.shared.correctClockSkew(serverTimestamp: serverTimestamp)
             result(nil)
 
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    /// The 0.1.11-and-earlier path: the native SDK's own appId-scoped store. Nothing in
+    /// a host app registers into it (registration runs in the runtime), so in
+    /// practice this throws `notRegistered`; kept as the fallback so a device
+    /// without a runtime identity behaves exactly as before.
+    private func nativeSdkSign(appId: String, method: String, path: String, bodyBytes: Data?) throws -> [String: String] {
+        let headers = try SynheartAuth.shared.signRequest(
+            appId: appId,
+            method: method,
+            path: path,
+            bodyBytes: bodyBytes
+        )
+        return [
+            "appId": headers.appId,
+            "deviceId": headers.deviceId,
+            "signature": headers.signature,
+            "timestamp": headers.timestamp,
+            "nonce": headers.nonce,
+            "signatureVersion": headers.signatureVersion,
+        ]
     }
 
     private func flutterError(from error: SynheartAuthError) -> FlutterError {
