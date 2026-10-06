@@ -43,6 +43,10 @@ class SynheartAuth {
   Future<void> configure(String baseUrl) => _bridge.configure(baseUrl);
 
   /// Check if a device is already registered for the given app.
+  ///
+  /// True when this install holds the device identity the Synheart runtime
+  /// registered for [appId] — its stored device record *and* the live
+  /// hardware key it names.
   Future<bool> isRegistered(String appId) => _bridge.isRegistered(appId);
 
   /// Runtime-only networking policy:
@@ -58,6 +62,11 @@ class SynheartAuth {
   }
 
   /// Sign an HTTP request with device credentials.
+  ///
+  /// Signs with the device key the Synheart runtime registered for [appId]
+  /// (Secure Enclave on iOS, Android Keystore on Android), producing the same
+  /// headers the runtime itself sends on ingest. Throws [NotRegistered] when
+  /// this install holds no runtime-registered identity for [appId].
   ///
   /// Returns [SignedHeaders] containing all 6 required auth headers.
   Future<SignedHeaders> signRequest({
@@ -82,7 +91,8 @@ class SynheartAuth {
     );
   }
 
-  /// Get the device ID for the given app, or null if not registered.
+  /// Get the runtime-registered device ID for the given app, or null if not
+  /// registered.
   Future<String?> getDeviceId(String appId) => _bridge.getDeviceId(appId);
 
   /// Runtime-only networking policy:
@@ -98,8 +108,11 @@ class SynheartAuth {
     );
   }
 
-  /// Destructive: delete all local auth state for this app.
-  /// The device will need to re-register.
+  /// Destructive: delete the native SDK's local auth state for this app.
+  ///
+  /// This does **not** remove the identity the Synheart runtime registered:
+  /// [isRegistered], [getDeviceId] and [signRequest] keep using it. The
+  /// runtime's own logout is the only supported way to drop that identity.
   Future<void> resetDeviceIdentity(String appId) =>
       _bridge.resetDeviceIdentity(appId);
 

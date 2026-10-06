@@ -44,7 +44,7 @@ flutter pub add synheart_auth
 The plugin depends on the native Synheart Auth SDKs to do the actual
 crypto. They are published separately:
 
-- **Android**: [synheart-auth-kotlin](https://github.com/synheart-ai/synheart-auth-kotlin) — resolved automatically from Maven Central as `ai.synheart:synheart-auth:0.1.3`. Nothing to do in your app.
+- **Android**: [synheart-auth-kotlin](https://github.com/synheart-ai/synheart-auth-kotlin) — resolved automatically from Maven Central as `ai.synheart:synheart-auth:0.1.4`. Nothing to do in your app.
 - **iOS**: [synheart-auth-swift](https://github.com/synheart-ai/synheart-auth-swift) — the `SynheartAuth` pod is the **only** iOS implementation: all `synheart_native_*` crypto and Keychain callbacks live there, this plugin contributes Flutter glue only. CocoaPods trunk carries `SynheartAuth 0.1.0`, which predates the 0.1.1 App Attest timeout and the 0.1.2 Keychain absent-vs-unavailable fix, so **pin the pod in your Podfile**:
 
   ```ruby
@@ -80,6 +80,29 @@ final headers = await SynheartAuth.instance.signRequest(
 > Use this plugin standalone only when you need to **sign** requests
 > against a runtime-registered device key.
 
+### Signing with the runtime-registered identity
+
+`signRequest`, `isRegistered` and `getDeviceId` read the identity the runtime
+registered on this install — the device record it stores under
+`("synheart-core", "device_record:<appId>")` and the hardware key that record
+names (Android Keystore alias `synheart_device_<deviceId>`; iOS Secure Enclave
+key under Keychain service `ai.synheart.auth.fficrypto`). The signature is made
+with that key, over the same message and in the same header format the runtime
+uses for ingest, so the server cannot tell the two signers apart.
+
+- Pass the **same `appId` the runtime was configured with**; the record is
+  scoped by it, and it is sent back as `X-App-ID`.
+- Until the runtime has registered, `isRegistered` is `false`, `getDeviceId`
+  is `null` and `signRequest` throws `NotRegistered`.
+- `correctClockSkew` applies to these signatures. It is local to this plugin;
+  the runtime keeps its own clock.
+- `resetDeviceIdentity` does **not** remove the runtime identity. Use the
+  runtime's logout; it is the only supported way to drop a `device_id`.
+
+Through 0.1.11 these three methods read the native SDK's own store, which
+nothing in a host app can register into, so they always reported "not
+registered".
+
 ## API Reference
 
 ### `SynheartAuth`
@@ -87,10 +110,10 @@ final headers = await SynheartAuth.instance.signRequest(
 | Method | Description |
 |--------|-------------|
 | `configure(baseUrl)` | Set the auth service URL. Must be called first. |
-| `isRegistered(appId)` | Check if device is registered for this app. |
-| `signRequest(...)` | Sign an HTTP request. Returns `SignedHeaders` with all 6 auth headers. |
-| `getDeviceId(appId)` | Get the device ID, or null if not registered. |
-| `resetDeviceIdentity(appId)` | Delete all local auth state. |
+| `isRegistered(appId)` | Whether the runtime has registered this device for this app. |
+| `signRequest(...)` | Sign an HTTP request with the runtime-registered key. Returns `SignedHeaders` with all 6 auth headers. |
+| `getDeviceId(appId)` | Get the runtime-registered device ID, or null if not registered. |
+| `resetDeviceIdentity(appId)` | Delete the native SDK's local auth state. Does not touch the runtime identity. |
 | `correctClockSkew(serverTimestamp)` | Correct clock offset using server timestamp. |
 | `registerDevice(appId)` | **Throws `UnsupportedError`** — registration runs in the Synheart runtime. |
 | `rotateKey(appId)` | **Throws `UnsupportedError`** — key rotation runs in the Synheart runtime. |
