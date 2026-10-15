@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'synheart_auth'
-  s.version          = '0.1.12'
+  s.version          = '0.1.13'
   s.summary          = 'Flutter plugin for Synheart device authentication.'
   s.description      = 'Wraps the native SynheartAuth iOS SDK (Secure Enclave) for Flutter.'
   s.homepage         = 'https://github.com/synheart-ai/synheart-auth-flutter'
@@ -10,14 +10,14 @@ Pod::Spec.new do |s|
   # Flutter glue only. Every `synheart_native_*` symbol the Dart side resolves
   # through `DynamicLibrary.process()` is defined by the `SynheartAuth` pod
   # (synheart-auth-swift, `Sources/SynheartAuth/FFI/SynheartNativeCrypto.swift`);
-  # this plugin ships no crypto or Keychain code of its own. Pin the pod at
-  # >= 0.1.2 in the host Podfile for the Keychain absent-vs-unavailable fix:
-  #   pod 'SynheartAuth', :git => 'https://github.com/synheart-ai/synheart-auth-swift.git', :tag => 'v0.1.2'
-  # (CocoaPods trunk currently carries 0.1.0, which predates both that fix and
-  # the 0.1.1 App Attest timeout.)
+  # this plugin ships no crypto or Keychain code of its own. 0.1.3 is the
+  # minimum: registration recovery, re-registration after key loss, and the
+  # 0.1.2 Keychain absent-vs-unavailable fix. If trunk doesn't carry it yet,
+  # pin it in the host Podfile:
+  #   pod 'SynheartAuth', :git => 'https://github.com/synheart-ai/synheart-auth-swift.git', :tag => 'v0.1.3'
   s.source_files     = 'Classes/*.{h,m,swift}'
   s.dependency 'Flutter'
-  s.dependency 'SynheartAuth'
+  s.dependency 'SynheartAuth', '>= 0.1.3'
   s.platform         = :ios, '15.0'
   s.swift_version    = '5.9'
 end
