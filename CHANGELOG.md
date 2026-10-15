@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Android secure storage restored from a backup no longer fails forever
+
+- **A secure store sealed by another Keystore key is now discarded.** Android
+  backup and device-to-device transfer restore `synheart_core_secure_storage`
+  but never the Keystore master key that sealed it, so on the new install
+  `EncryptedSharedPreferences.create` threw `AEADBadTagException` on every
+  call. `secureLoad` retried and returned null each time, and everything that
+  needs secure storage (device registration, a second runtime instance) failed
+  until the user cleared the app's data. On that exception only, the store is
+  deleted and recreated empty. Every other failure (Keystore not ready, user
+  not unlocked, OEM faults) still keeps the store and retries, since
+  discarding it then would orphan every sealed value.
+- **The runtime's `.smk-provisioned-<subject>` markers are cleared with it.**
+  They live in plain app storage, so a restore brings them back too, and the
+  runtime then refuses to mint a replacement storage master key
+  (`ERR_SECURE_STORAGE_UNAVAILABLE` on every launch). Once the store is gone,
+  every key they vouch for is gone, so they are removed from the app's data
+  directory and the runtime mints a fresh key.
+- Host apps should also exclude their data from backup and device transfer
+  (`allowBackup="false"` plus `dataExtractionRules`): nothing sealed by Keystore
+  keys can be read after a restore anyway.
+
 ### Fixed — `signRequest` now signs with the runtime-registered device key
 
 - **`signRequest`, `isRegistered` and `getDeviceId` never saw the device the
