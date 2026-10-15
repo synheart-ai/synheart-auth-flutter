@@ -14,6 +14,7 @@ import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
 import org.json.JSONObject
 import java.security.KeyFactory
+import javax.crypto.AEADBadTagException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.Signature
@@ -35,6 +36,8 @@ object NativeCryptoBridge {
     private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
     private const val KEY_ALIAS_PREFIX = "synheart_device_"
     private const val SECURE_PREFS_FILE = "synheart_core_secure_storage"
+    // Runtime file-name convention (synheart_crypto::smk); keep in sync.
+    private const val SMK_PROVISIONED_MARKER_PREFIX = ".smk-provisioned-"
 
     /// Hard cap on how long [getAttestation] blocks waiting for the Play
     /// Integrity Task to resolve. Play Integrity is contractually obligated to
@@ -112,20 +115,82 @@ object NativeCryptoBridge {
     private fun securePrefs(): SharedPreferences? {
         val ctx = appContext ?: return null
         return try {
-            val masterKey = MasterKey.Builder(ctx)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                ctx,
-                SECURE_PREFS_FILE,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+            openSecurePrefs(ctx)
         } catch (e: Exception) {
-            Log.e(TAG, "securePrefs init failed: ${e.message}", e)
-            null
+            if (!isSealedWithAnotherKey(e)) {
+                // Transient (Keystore not ready, user not authenticated, OEM
+                // hiccup): keep the file, the caller retries.
+                Log.e(TAG, "securePrefs init failed: ${e.message}", e)
+                return null
+            }
+            // The file's keyset was sealed by a master key this install does
+            // not have - typically app data restored from a backup or a
+            // device transfer, since Keystore keys are never backed up. Every
+            // value in it is permanently unreadable, and keeping it fails
+            // every secure read forever. Start an empty store instead.
+            Log.w(
+                TAG,
+                "securePrefs: stored keyset was sealed by another Keystore key " +
+                    "(restored backup?) - discarding the unreadable store",
+                e,
+            )
+            try {
+                ctx.deleteSharedPreferences(SECURE_PREFS_FILE)
+                clearSmkProvisionedMarkers(ctx)
+                openSecurePrefs(ctx)
+            } catch (e2: Exception) {
+                Log.e(TAG, "securePrefs re-create failed: ${e2.message}", e2)
+                null
+            }
         }
+    }
+
+    private fun openSecurePrefs(ctx: Context): SharedPreferences {
+        val masterKey = MasterKey.Builder(ctx)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            ctx,
+            SECURE_PREFS_FILE,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    /// Removes the runtime's `.smk-provisioned-<subject>` markers.
+    ///
+    /// The runtime writes one beside its data the first time it mints a
+    /// subject's storage master key into this store, and from then on refuses
+    /// to mint a replacement when the key reads back absent - it assumes a
+    /// locked Keystore and waits. Once the store itself has been discarded,
+    /// every key those markers vouch for is gone for good, so they would block
+    /// the subject forever (ERR_SECURE_STORAGE_UNAVAILABLE on every launch).
+    /// Markers live in plain app storage, so a restore brings them back with
+    /// the unreadable store. Searched across the app's data dir because each
+    /// runtime instance keeps its own data dir.
+    private fun clearSmkProvisionedMarkers(ctx: Context) {
+        val root = ctx.filesDir.parentFile ?: ctx.filesDir
+        var removed = 0
+        root.walkTopDown()
+            .maxDepth(6)
+            .filter { it.isFile && it.name.startsWith(SMK_PROVISIONED_MARKER_PREFIX) }
+            .forEach { if (it.delete()) removed++ }
+        Log.w(TAG, "securePrefs: removed $removed SMK provisioning marker(s)")
+    }
+
+    /// True only for the definitive "wrong key" failure: the GCM tag check of
+    /// the stored keyset failed. Transient Keystore states throw other types,
+    /// and must never discard the store - that would orphan everything in it.
+    private fun isSealedWithAnotherKey(e: Throwable): Boolean {
+        var cause: Throwable? = e
+        var depth = 0
+        while (cause != null && depth < 8) {
+            if (cause is AEADBadTagException) return true
+            cause = cause.cause
+            depth++
+        }
+        return false
     }
 
     // ── Key alias helper ────────────────────────────────────────────────
