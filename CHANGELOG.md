@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13] - 2026-10-15
+
+### Changed
+
+- **Android: native SDK `ai.synheart:synheart-auth` 0.1.5** (was 0.1.4).
+  Signing no longer fails after a key rotation, device identity survives a
+  process restart, and an interrupted registration no longer blocks
+  `registerDevice` forever.
+- **iOS: requires the `SynheartAuth` pod 0.1.3 or later** (was unpinned).
+  CocoaPods trunk still served 0.1.0, which predates the Keychain
+  absent-vs-unavailable fix (0.1.2); 0.1.3 adds registration recovery and
+  re-registration after key loss. Pin `:tag => 'v0.1.3'` in the host
+  Podfile until trunk carries 0.1.3.
+
 ## [0.1.12] - 2026-10-15
 
 ### Fixed — Android secure storage restored from a backup no longer fails forever
