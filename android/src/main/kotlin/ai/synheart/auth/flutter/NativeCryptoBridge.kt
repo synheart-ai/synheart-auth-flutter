@@ -2,6 +2,7 @@ package ai.synheart.auth.flutter
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import android.os.Looper
 import android.os.SystemClock
 import android.security.keystore.KeyGenParameterSpec
@@ -18,7 +19,9 @@ import javax.crypto.AEADBadTagException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.Signature
+import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
+import javax.crypto.KeyAgreement
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -209,15 +212,29 @@ object NativeCryptoBridge {
     @JvmStatic
     fun generateKey(deviceId: String): String? {
         warnIfOnMainThread("generateKey")
+        val agreement = SpaceKeyAgreement.isAgreementAlias(deviceId)
+        if (agreement && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            // PURPOSE_AGREE_KEY arrived in Android 12; before it a Keystore key
+            // can't do ECDH, so this device can't take part in space sharing.
+            Log.w(TAG, "generateKey($deviceId): key agreement needs Android 12+ (API ${Build.VERSION.SDK_INT})")
+            return null
+        }
         return try {
             val keyAlias = alias(deviceId)
-            val spec = KeyGenParameterSpec.Builder(
-                keyAlias,
-                KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
-            )
-                .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-                .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_NONE)
-                .build()
+            // A Keystore key is for signing or for agreement, never both.
+            val spec = if (agreement) {
+                KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_AGREE_KEY)
+                    .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                    .build()
+            } else {
+                KeyGenParameterSpec.Builder(
+                    keyAlias,
+                    KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
+                )
+                    .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                    .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_NONE)
+                    .build()
+            }
 
             val kpg = KeyPairGenerator.getInstance(
                 KeyProperties.KEY_ALGORITHM_EC, KEYSTORE_PROVIDER
@@ -289,6 +306,9 @@ object NativeCryptoBridge {
     }
 
     private fun signDerOrThrow(deviceId: String, data: ByteArray): ByteArray {
+        require(!SpaceKeyAgreement.isAgreementAlias(deviceId)) {
+            "Refusing to sign with the key-agreement key $deviceId"
+        }
         val keyAlias = alias(deviceId)
         val ks = KeyStore.getInstance(KEYSTORE_PROVIDER)
         ks.load(null)
@@ -422,6 +442,41 @@ object NativeCryptoBridge {
             .put("format", "play-integrity")
             .put("blob", token)
             .toString()
+
+    // ── 3b. keyAgreement (sync-space sharing) ───────────────────────────
+
+    /// P-256 ECDH between the Keystore key under [deviceId] (a
+    /// `*.space.agreement` key from [generateKey]) and [peer], an uncompressed
+    /// point (65 bytes, `0x04` first). Returns the 32-byte shared secret (the
+    /// x coordinate), or null on any failure: Android below 12, a peer that is
+    /// not a valid point, no such key. The private key never leaves Keystore.
+    @JvmStatic
+    fun keyAgreement(deviceId: String, peer: ByteArray): ByteArray? {
+        warnIfOnMainThread("keyAgreement")
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            Log.w(TAG, "keyAgreement($deviceId): needs Android 12+ (API ${Build.VERSION.SDK_INT})")
+            return null
+        }
+        return try {
+            val keyAlias = alias(deviceId)
+            val ks = KeyStore.getInstance(KEYSTORE_PROVIDER)
+            ks.load(null)
+            val entry = ks.getEntry(keyAlias, null) as? KeyStore.PrivateKeyEntry
+                ?: throw IllegalStateException("Key not found: $keyAlias")
+            val params = (entry.certificate.publicKey as ECPublicKey).params
+            val peerKey = SpaceKeyAgreement.peerPublicKey(peer, params)
+                ?: throw IllegalArgumentException("peer is not an uncompressed P-256 point (len=${peer.size})")
+            val ka = KeyAgreement.getInstance("ECDH", KEYSTORE_PROVIDER)
+            ka.init(entry.privateKey)
+            ka.doPhase(peerKey, true)
+            val secret = ka.generateSecret()
+            check(secret.size == 32) { "shared secret is ${secret.size} bytes, not 32" }
+            secret
+        } catch (e: Exception) {
+            Log.e(TAG, "keyAgreement($deviceId) failed: ${e.message}", e)
+            null
+        }
+    }
 
     // ── 4. keyExists ────────────────────────────────────────────────────
 

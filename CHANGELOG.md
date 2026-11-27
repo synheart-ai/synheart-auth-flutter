@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.1.14] - 2026-11-27
+
+### Added — key agreement for sync-space sharing
+
+- **`synheart_native_key_agreement`** (Android): P-256 ECDH with the Keystore
+  key under the given alias and an uncompressed peer point (65 bytes, `0x04`
+  first). Writes the 32-byte shared secret and returns 0; returns 1 for an
+  invalid or off-curve point, a missing key, or Android below 12. Register it
+  with `synheart_core_sdk_set_key_agreement_callback` (core-runtime 0.47.0 and
+  later), after the crypto callbacks.
+- **`generate_key` for `<device_id>.space.agreement`** creates a Keystore key
+  with `PURPOSE_AGREE_KEY` (Android 12 and later; it fails on older versions,
+  where Keystore has no key agreement). Every other alias stays a signing key,
+  and signing with the agreement key is refused.
+- **iOS** requires `SynheartAuth` 0.1.5, which adds the same agreement key and
+  callback on the Secure Enclave.
+
 ## [0.1.13] - 2026-10-15
 
 ### Changed
