@@ -8,6 +8,7 @@
 //   synheart_native_get_attestation
 //   synheart_native_key_exists
 //   synheart_native_delete_key
+//   synheart_native_key_agreement
 //   synheart_native_secure_store
 //   synheart_native_secure_load
 //   synheart_native_secure_delete
@@ -259,6 +260,50 @@ int synheart_native_delete_key(const char *device_id) {
 
     detach(s);
     return result ? 0 : 1;
+}
+
+// P-256 ECDH for sync-space sharing (synheart_core_sdk_set_key_agreement_callback).
+// Agrees between the Keystore key under `alias` and `peer` (an uncompressed
+// point, 65 bytes, 0x04 first) and writes the 32-byte shared secret to `out`.
+// Returns 0 on success, 1 on any failure (Android below 12, invalid point,
+// no such key).
+__attribute__((visibility("default")))
+int synheart_native_key_agreement(const char *alias,
+                                  const unsigned char *peer,
+                                  size_t peer_len,
+                                  unsigned char *out) {
+    if (!alias || !peer || !out || peer_len != 65) return 1;
+
+    JniScope s = attach();
+    if (!s.env) return 1;
+
+    jclass cls = findBridgeClass(s.env);
+    if (!cls) { detach(s); return 1; }
+
+    jmethodID mid = s.env->GetStaticMethodID(cls, "keyAgreement",
+        "(Ljava/lang/String;[B)[B");
+    if (!mid) { s.env->ExceptionClear(); detach(s); return 1; }
+
+    jstring jAlias = s.env->NewStringUTF(alias);
+    jbyteArray jPeer = s.env->NewByteArray((jsize) peer_len);
+    s.env->SetByteArrayRegion(jPeer, 0, (jsize) peer_len, reinterpret_cast<const jbyte *>(peer));
+
+    jbyteArray result = (jbyteArray) s.env->CallStaticObjectMethod(cls, mid, jAlias, jPeer);
+
+    if (s.env->ExceptionCheck()) {
+        LOGE("synheart_native_key_agreement: JNI exception");
+        s.env->ExceptionDescribe();
+        s.env->ExceptionClear();
+        detach(s);
+        return 1;
+    }
+    if (!result || s.env->GetArrayLength(result) != 32) {
+        detach(s);
+        return 1;
+    }
+    s.env->GetByteArrayRegion(result, 0, 32, reinterpret_cast<jbyte *>(out));
+    detach(s);
+    return 0;
 }
 
 // Store secure value for (service, key). Returns 0 on success, non-zero on failure.
