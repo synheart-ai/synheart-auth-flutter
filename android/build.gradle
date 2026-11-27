@@ -12,7 +12,7 @@ buildscript {
         // targeting Android 15+ (compileSdk 35). Pinning to 8.7.3 to
         // match the host app (which uses AGP 8.9.1) and avoid drift.
         classpath 'com.android.tools.build:gradle:8.7.3'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.10'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21'
     }
 }
 
@@ -72,15 +72,15 @@ android {
 
 dependencies {
     implementation "ai.synheart:synheart-auth:0.1.5"
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.1.10"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
-    implementation "org.json:json:20231013"
-    implementation "com.google.android.play:integrity:1.4.0"
-    implementation "androidx.security:security-crypto:1.1.0-alpha06"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.4.21"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
+    implementation "org.json:json:20260814"
+    implementation "com.google.android.play:integrity:1.6.0"
+    implementation "androidx.security:security-crypto:1.1.0"
 
     testImplementation "junit:junit:4.13.2"
-    testImplementation "org.jetbrains.kotlin:kotlin-test:2.1.10"
+    testImplementation "org.jetbrains.kotlin:kotlin-test:2.4.21"
     // The android.jar org.json is a stub under unit tests; use the real one.
-    testImplementation "org.json:json:20231013"
+    testImplementation "org.json:json:20260814"
 }
